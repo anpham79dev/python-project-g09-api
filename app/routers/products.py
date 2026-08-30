@@ -5,6 +5,8 @@ from sqlalchemy import or_
 from app.dependencies import get_db, require_permission
 from app.models.user import User
 from app.models.product import Product
+from app.models.stock import StockItem
+from app.models.branch import Warehouse
 from app.schemas.product import ProductCreate, ProductUpdate, ProductResponse
 
 router = APIRouter(prefix="/products", tags=["Products"])
@@ -60,9 +62,6 @@ def get_product_by_id(id: str, db: Session = Depends(get_db)):
         )
     return product
 
-
-from app.models.stock import StockItem
-from app.models.branch import Warehouse
 
 @router.post("", response_model=ProductResponse, status_code=status.HTTP_201_CREATED)
 def create_product(

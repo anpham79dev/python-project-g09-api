@@ -3,7 +3,7 @@ from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, status, Query, Request
 from sqlalchemy.orm import Session
 from app.dependencies import get_db, require_permission, get_current_user
-from app.models.role import Role, role_permissions
+from app.models.role import Role
 from app.models.permission import Permission
 from app.models.user import User
 from app.models.audit_log import AuditLog
@@ -14,9 +14,56 @@ from app.schemas.role import (
     PermissionResponse,
     AuditLogResponse,
 )
-from app.core.rbac_config import ALL_PERMISSIONS, SYSTEM_ROLES_CONFIG
+from app.core.rbac_config import ALL_PERMISSIONS
 
 router = APIRouter(tags=["Roles & Permissions"])
+
+
+def _count_role_users(db: Session, role: Role) -> int:
+    """Số người dùng đang được gán vai trò này (theo role_id mới hoặc role code cũ)."""
+    return db.query(User).filter(
+        (User.role_id == role.id) | (User.role == role.code)
+    ).count()
+
+
+def _to_role_response(db: Session, role: Role, user_count: Optional[int] = None) -> RoleResponse:
+    return RoleResponse(
+        id=role.id,
+        code=role.code,
+        name=role.name,
+        description=role.description,
+        is_system=role.is_system,
+        permissions_version=role.permissions_version,
+        permissions=[PermissionResponse.model_validate(p) for p in role.permissions],
+        user_count=user_count if user_count is not None else _count_role_users(db, role),
+        created_at=role.created_at,
+        updated_at=role.updated_at
+    )
+
+
+def _write_audit_log(
+    db: Session,
+    actor: User,
+    req: Request,
+    action: str,
+    target_id: str,
+    target_name: str,
+    summary: str,
+    details: dict,
+) -> None:
+    audit = AuditLog(
+        user_id=actor.id,
+        user_name=actor.full_name,
+        action=action,
+        target_type="ROLE",
+        target_id=target_id,
+        target_name=target_name,
+        changes_summary=summary,
+        details_json=json.dumps(details),
+        ip_address=req.client.host if req.client else None
+    )
+    db.add(audit)
+    db.commit()
 
 
 @router.get("/permissions", response_model=List[PermissionResponse])
@@ -48,28 +95,7 @@ def list_roles(
 ):
     """List all roles with permissions and user count."""
     roles = db.query(Role).order_by(Role.is_system.desc(), Role.name).all()
-    result = []
-    for r in roles:
-        # Count users with this role
-        user_count = db.query(User).filter(
-            (User.role_id == r.id) | (User.role == r.code)
-        ).count()
-        res = RoleResponse(
-            id=r.id,
-            code=r.code,
-            name=r.name,
-            description=r.description,
-            is_system=r.is_system,
-            permissions_version=r.permissions_version,
-            permissions=[
-                PermissionResponse.model_validate(p) for p in r.permissions
-            ],
-            user_count=user_count,
-            created_at=r.created_at,
-            updated_at=r.updated_at
-        )
-        result.append(res)
-    return result
+    return [_to_role_response(db, r) for r in roles]
 
 
 @router.get("/roles/{role_id}", response_model=RoleResponse)
@@ -85,23 +111,7 @@ def get_role(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Không tìm thấy vai trò với ID '{role_id}'!"
         )
-
-    user_count = db.query(User).filter(
-        (User.role_id == role.id) | (User.role == role.code)
-    ).count()
-
-    return RoleResponse(
-        id=role.id,
-        code=role.code,
-        name=role.name,
-        description=role.description,
-        is_system=role.is_system,
-        permissions_version=role.permissions_version,
-        permissions=[PermissionResponse.model_validate(p) for p in role.permissions],
-        user_count=user_count,
-        created_at=role.created_at,
-        updated_at=role.updated_at
-    )
+    return _to_role_response(db, role)
 
 
 @router.post("/roles", response_model=RoleResponse, status_code=status.HTTP_201_CREATED)
@@ -137,34 +147,17 @@ def create_role(
     db.commit()
     db.refresh(new_role)
 
-    # Audit log
     perm_codes = [p.code for p in new_role.permissions]
-    audit = AuditLog(
-        user_id=current_user.id,
-        user_name=current_user.full_name,
+    _write_audit_log(
+        db, current_user, req,
         action="ROLE_CREATE",
-        target_type="ROLE",
         target_id=new_role.id,
         target_name=new_role.name,
-        changes_summary=f"Tạo vai trò mới '{new_role.name}' ({new_role.code}) với {len(perm_codes)} quyền",
-        details_json=json.dumps({"after_permissions": perm_codes, "code": new_role.code}),
-        ip_address=req.client.host if req.client else None
+        summary=f"Tạo vai trò mới '{new_role.name}' ({new_role.code}) với {len(perm_codes)} quyền",
+        details={"after_permissions": perm_codes, "code": new_role.code},
     )
-    db.add(audit)
-    db.commit()
 
-    return RoleResponse(
-        id=new_role.id,
-        code=new_role.code,
-        name=new_role.name,
-        description=new_role.description,
-        is_system=new_role.is_system,
-        permissions_version=new_role.permissions_version,
-        permissions=[PermissionResponse.model_validate(p) for p in new_role.permissions],
-        user_count=0,
-        created_at=new_role.created_at,
-        updated_at=new_role.updated_at
-    )
+    return _to_role_response(db, new_role, user_count=0)
 
 
 @router.put("/roles/{role_id}", response_model=RoleResponse)
@@ -201,7 +194,6 @@ def update_role(
     db.commit()
     db.refresh(role)
 
-    # Record Audit Log
     diff_added = list(set(new_perm_codes) - set(old_perm_codes))
     diff_removed = list(set(old_perm_codes) - set(new_perm_codes))
     summary_parts = []
@@ -212,42 +204,22 @@ def update_role(
     if not summary_parts:
         summary_parts.append("Cập nhật thông tin vai trò")
 
-    audit = AuditLog(
-        user_id=current_user.id,
-        user_name=current_user.full_name,
+    _write_audit_log(
+        db, current_user, req,
         action="ROLE_UPDATE_PERMISSIONS",
-        target_type="ROLE",
         target_id=role.id,
         target_name=role.name,
-        changes_summary="; ".join(summary_parts),
-        details_json=json.dumps({
+        summary="; ".join(summary_parts),
+        details={
             "before": old_perm_codes,
             "after": new_perm_codes,
             "diff_added": diff_added,
             "diff_removed": diff_removed,
             "version": role.permissions_version
-        }),
-        ip_address=req.client.host if req.client else None
+        },
     )
-    db.add(audit)
-    db.commit()
 
-    user_count = db.query(User).filter(
-        (User.role_id == role.id) | (User.role == role.code)
-    ).count()
-
-    return RoleResponse(
-        id=role.id,
-        code=role.code,
-        name=role.name,
-        description=role.description,
-        is_system=role.is_system,
-        permissions_version=role.permissions_version,
-        permissions=[PermissionResponse.model_validate(p) for p in role.permissions],
-        user_count=user_count,
-        created_at=role.created_at,
-        updated_at=role.updated_at
-    )
+    return _to_role_response(db, role)
 
 
 @router.delete("/roles/{role_id}")
@@ -271,9 +243,7 @@ def delete_role(
             detail=f"Không thể xóa vai trò hệ thống '{role.name}' ({role.code})!"
         )
 
-    user_count = db.query(User).filter(
-        (User.role_id == role.id) | (User.role == role.code)
-    ).count()
+    user_count = _count_role_users(db, role)
     if user_count > 0:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -286,20 +256,14 @@ def delete_role(
     db.delete(role)
     db.commit()
 
-    # Record Audit Log
-    audit = AuditLog(
-        user_id=current_user.id,
-        user_name=current_user.full_name,
+    _write_audit_log(
+        db, current_user, req,
         action="ROLE_DELETE",
-        target_type="ROLE",
         target_id=role_id,
         target_name=role_name,
-        changes_summary=f"Xóa vai trò tùy biến '{role_name}' ({role_code})",
-        details_json=json.dumps({"deleted_role_code": role_code}),
-        ip_address=req.client.host if req.client else None
+        summary=f"Xóa vai trò tùy biến '{role_name}' ({role_code})",
+        details={"deleted_role_code": role_code},
     )
-    db.add(audit)
-    db.commit()
 
     return {"message": f"Đã xóa vai trò '{role_name}' thành công!"}
 

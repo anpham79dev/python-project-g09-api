@@ -1,4 +1,3 @@
-import uuid
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
@@ -11,8 +10,6 @@ from app.schemas.branch import (
     BranchResponse,
     BranchCreate,
     BranchUpdate,
-    WarehouseResponse,
-    WarehouseCreate,
     StockItemResponse,
     UpdateStockRequest,
 )
@@ -30,41 +27,7 @@ def get_branches(
     query = db.query(Branch)
     if status:
         query = query.filter(Branch.status == status)
-    branches = query.order_by(Branch.created_at.asc()).all()
-
-    # If no branches exist, seed default branches
-    if not branches:
-        b1 = Branch(
-            id="branch-001",
-            code="CN-Q1",
-            name="Artisan Bakery - Chi Nhánh Quận 1 (Trụ Sở)",
-            address="123 Đường Đồng Khởi, Bến Nghé, Quận 1, TP.HCM",
-            phone="0901 234 567",
-            manager_name="Nguyễn Quản Trị",
-            status="ACTIVE"
-        )
-        b2 = Branch(
-            id="branch-002",
-            code="CN-TD",
-            name="Artisan Bakery - Chi Nhánh Thảo Điền",
-            address="45 Đường Xuân Thủy, Thảo Điền, TP. Thủ Đức, TP.HCM",
-            phone="0909 888 777",
-            manager_name="Lê Thu Hà",
-            status="ACTIVE"
-        )
-        db.add_all([b1, b2])
-        db.flush()
-
-        # Seed Retail Warehouses
-        w1 = Warehouse(id="wh-001", branch_id=b1.id, code="KHO-Q1-POS", name="Kho Quầy Bán Lẻ Q1", warehouse_type="RETAIL")
-        w2 = Warehouse(id="wh-002", branch_id=b1.id, code="KHO-Q1-COLD", name="Kho Lạnh Bảo Quản Q1", warehouse_type="COLD_STORAGE")
-        w3 = Warehouse(id="wh-003", branch_id=b2.id, code="KHO-TD-POS", name="Kho Quầy Bán Lẻ Thảo Điền", warehouse_type="RETAIL")
-        db.add_all([w1, w2, w3])
-        db.commit()
-
-        branches = [b1, b2]
-
-    return branches
+    return query.order_by(Branch.created_at.asc()).all()
 
 
 @router.post("", response_model=BranchResponse, status_code=status.HTTP_201_CREATED)
@@ -123,23 +86,17 @@ def get_warehouse_stocks(
         query = query.filter(StockItem.product_id == product_id)
 
     stocks = query.all()
-    
-    # Auto seed stock item if empty
-    if not stocks and not branch_id and not warehouse_id:
-        wh1 = db.query(Warehouse).first()
-        prod1 = db.query(Product).first()
-        if wh1 and prod1:
-            stk = StockItem(warehouse_id=wh1.id, product_id=prod1.id, quantity=15, min_alert_stock=5)
-            db.add(stk)
-            db.commit()
-            stocks = [stk]
+
+    warehouses = {w.id: w for w in db.query(Warehouse).all()}
+    branches = {b.id: b for b in db.query(Branch).all()}
+    products = {p.id: p for p in db.query(Product).all()}
 
     results = []
     for s in stocks:
-        wh = db.query(Warehouse).filter(Warehouse.id == s.warehouse_id).first()
-        prod = db.query(Product).filter(Product.id == s.product_id).first()
-        branch = db.query(Branch).filter(Branch.id == wh.branch_id).first() if wh and wh.branch_id else None
-        
+        wh = warehouses.get(s.warehouse_id)
+        prod = products.get(s.product_id)
+        branch = branches.get(wh.branch_id) if wh and wh.branch_id else None
+
         calc_status = "in_stock" if s.quantity > s.min_alert_stock else "low_stock" if s.quantity > 0 else "out_of_stock"
 
         results.append(StockItemResponse(
