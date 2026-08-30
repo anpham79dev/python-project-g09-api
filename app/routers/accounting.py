@@ -1,9 +1,8 @@
-import uuid
 from datetime import datetime, timezone, timedelta
 from typing import List, Optional
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.orm import Session
-from app.dependencies import get_db, require_permission, get_current_user
+from app.dependencies import get_db, require_permission
 from app.models.user import User
 from app.models.branch import Branch
 from app.models.transaction import Transaction

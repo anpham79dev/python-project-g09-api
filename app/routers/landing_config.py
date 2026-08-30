@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
-from app.dependencies import get_db, require_permission, get_current_user
+from app.dependencies import get_db, require_permission
 from app.models.landing_config import LandingPageConfig
 from app.models.user import User
 from app.schemas.landing_config import LandingPageConfigSchema

@@ -1,8 +1,7 @@
-from datetime import datetime, timezone, timedelta, date
+from datetime import datetime, timezone, timedelta
 from typing import List, Optional, Dict
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
-from sqlalchemy import func
 from app.dependencies import get_db, require_permission
 from app.models.user import User
 from app.models.product import Product

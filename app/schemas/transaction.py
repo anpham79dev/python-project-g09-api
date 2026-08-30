@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Optional, List, Dict
+from typing import Optional, Dict
 from pydantic import BaseModel, ConfigDict, Field
 from pydantic.alias_generators import to_camel
 

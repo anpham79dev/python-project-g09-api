@@ -2,7 +2,6 @@ from datetime import datetime, timezone
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
-from sqlalchemy import func
 from app.dependencies import get_db, get_current_user, require_permission
 from app.models.user import User
 from app.models.order import Order

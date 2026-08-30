@@ -1,5 +1,4 @@
-import json
-from typing import List, Optional
+from typing import List
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from app.dependencies import get_db, require_permission, get_current_user
