@@ -10,7 +10,7 @@ sys.path.insert(0, dirname(dirname(abspath(__file__))))
 
 from app.core.config import settings
 from app.database import Base
-from app.models import User, Product, Order, OrderItem
+import app.models  # noqa: F401 - registers every model on Base.metadata for autogenerate
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.

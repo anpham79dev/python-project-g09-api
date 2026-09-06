@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
@@ -13,6 +13,18 @@ from app.schemas.shift import (
 )
 
 router = APIRouter(prefix="/shifts", tags=["Shift & Cash Management"])
+
+
+def _parse_day_range(date_filter: Optional[str]):
+    """Convert a 'YYYY-MM-DD' filter into a half-open UTC datetime range, or (None, None)."""
+    if not date_filter:
+        return None, None
+    try:
+        d = datetime.strptime(date_filter, "%Y-%m-%d").date()
+    except ValueError:
+        return None, None
+    start_dt = datetime.combine(d, datetime.min.time()).replace(tzinfo=timezone.utc)
+    return start_dt, start_dt + timedelta(days=1)
 
 
 def _calculate_shift_live_stats(shift: WorkShift, db: Session) -> WorkShift:
@@ -147,14 +159,9 @@ def get_shifts_list(
     if branch_id and branch_id != "ALL":
         query = query.filter(WorkShift.branch_id == branch_id)
 
-    if date_filter:
-        try:
-            d = datetime.strptime(date_filter, "%Y-%m-%d").date()
-            start_dt = datetime.combine(d, datetime.min.time()).replace(tzinfo=timezone.utc)
-            end_dt = start_dt + timedelta(days=1)
-            query = query.filter(WorkShift.start_time >= start_dt, WorkShift.start_time < end_dt)
-        except Exception:
-            pass
+    start_dt, end_dt = _parse_day_range(date_filter)
+    if start_dt:
+        query = query.filter(WorkShift.start_time >= start_dt, WorkShift.start_time < end_dt)
 
     shifts = query.order_by(WorkShift.start_time.desc()).all()
 
@@ -181,14 +188,9 @@ def get_shift_summary(
     if branch_id and branch_id != "ALL":
         query = query.filter(WorkShift.branch_id == branch_id)
 
-    if date_filter:
-        try:
-            d = datetime.strptime(date_filter, "%Y-%m-%d").date()
-            start_dt = datetime.combine(d, datetime.min.time()).replace(tzinfo=timezone.utc)
-            end_dt = start_dt + timedelta(days=1)
-            query = query.filter(WorkShift.start_time >= start_dt, WorkShift.start_time < end_dt)
-        except Exception:
-            pass
+    start_dt, end_dt = _parse_day_range(date_filter)
+    if start_dt:
+        query = query.filter(WorkShift.start_time >= start_dt, WorkShift.start_time < end_dt)
 
     shifts = query.order_by(WorkShift.start_time.desc()).all()
     for s in shifts:

@@ -4,23 +4,9 @@ from app.dependencies import get_db, get_current_user
 from app.core.security import verify_password, create_access_token
 from app.models.user import User
 from app.schemas.user import LoginRequest, LoginResponse, UserResponse
+from app.routers.users import _resolve_user_response
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
-
-
-def _build_user_response(user: User, db: Session) -> UserResponse:
-    user_res = UserResponse.model_validate(user)
-    user_res.role = user.role_code
-    user_res.role_id = user.role_id
-    user_res.role_name = user.role_name
-    user_res.permissions_version = user.permissions_version
-    user_res.permissions = user.get_permissions()
-    if user.default_branch_id:
-        from app.models.branch import Branch
-        br = db.query(Branch).filter(Branch.id == user.default_branch_id).first()
-        if br:
-            user_res.default_branch_name = br.name
-    return user_res
 
 
 @router.post("/login", response_model=LoginResponse)
@@ -42,7 +28,7 @@ def login(request: LoginRequest, response: Response, db: Session = Depends(get_d
         )
     
     token = create_access_token(subject=user.id, role=user.role_code)
-    user_res = _build_user_response(user, db)
+    user_res = _resolve_user_response(user, db)
 
     response.headers["X-Role-Permissions-Version"] = str(user.permissions_version)
 
@@ -56,4 +42,4 @@ def login(request: LoginRequest, response: Response, db: Session = Depends(get_d
 def get_me(response: Response, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     """Get current authenticated user profile with latest permissions."""
     response.headers["X-Role-Permissions-Version"] = str(current_user.permissions_version)
-    return _build_user_response(current_user, db)
+    return _resolve_user_response(current_user, db)
