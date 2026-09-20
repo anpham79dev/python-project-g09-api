@@ -1,4 +1,6 @@
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone, timedelta, time
+from zoneinfo import ZoneInfo
+import sqlalchemy as sa
 from app.database import SessionLocal, Base, engine
 from app.core.security import get_password_hash
 from app.models.user import User
@@ -15,6 +17,7 @@ from app.models.role import Role, role_permissions
 from app.models.audit_log import AuditLog
 from app.core.rbac_config import ALL_PERMISSIONS, SYSTEM_ROLES_CONFIG
 from app.routers.landing_config import DEFAULT_LANDING_CONFIG
+from app.routers.settings import DEFAULT_SETTINGS
 
 
 def seed_database():
@@ -25,26 +28,26 @@ def seed_database():
         # Tạo tables nếu chưa có
         Base.metadata.create_all(bind=engine)
         with engine.connect() as conn:
-            import sqlalchemy as sa
             conn.execute(sa.text("ALTER TABLE users ADD COLUMN IF NOT EXISTS role_id VARCHAR(50) REFERENCES roles(id) ON DELETE SET NULL;"))
             conn.commit()
 
-        # Xóa dữ liệu cũ theo đúng thứ tự khóa ngoại
+        # Xóa dữ liệu cũ theo đúng thứ tự khóa ngoại (bảng con trước, bảng cha sau)
         db.query(OrderItem).delete()
         db.query(Order).delete()
         db.query(StockItem).delete()
-        db.query(Transaction).delete()
         db.query(WorkShift).delete()
-        db.query(Product).delete()
-        db.query(User).delete()
-        db.query(Warehouse).delete()
-        db.query(Branch).delete()
-        db.query(ShiftTemplate).delete()
-        db.query(SystemSetting).delete()
+        db.query(Transaction).delete()
         db.query(AuditLog).delete()
+        db.query(Product).delete()
+        db.query(Warehouse).delete()
+        db.query(User).delete()
+        db.query(Branch).delete()
         db.execute(role_permissions.delete())
         db.query(Role).delete()
         db.query(Permission).delete()
+        db.query(ShiftTemplate).delete()
+        db.query(SystemSetting).delete()
+        db.query(LandingPageConfig).delete()
         db.commit()
 
         # 0. TẠO 21 PERMISSIONS
@@ -332,19 +335,181 @@ def seed_database():
         db.commit()
         print(f"✅ Đã nạp {len(stock_items)} bản ghi tồn kho chi nhánh (stock_items) cho 11 sản phẩm.")
 
-        # 3. TẠO ĐƠN HÀNG LỊCH SỬ (Hôm nay & Hôm qua)
-        now = datetime.now(timezone.utc)
-        today_date_str = now.strftime("%y%m%d")
-        yesterday = now - timedelta(days=1)
-        yesterday_date_str = yesterday.strftime("%y%m%d")
+        # 3. TẠO WORK SHIFTS (CA ĐÃ CHỐT, KHÔNG CÓ CA MỞ)
+        vn_tz = ZoneInfo("Asia/Ho_Chi_Minh")
+        now_vn = datetime.now(vn_tz)
+        yesterday_vn = now_vn - timedelta(days=1)
+        two_days_ago_vn = now_vn - timedelta(days=2)
 
-        # Đơn hôm nay 1 (Sáng 08:30)
+        yesterday_d = yesterday_vn.date()
+        two_days_ago_d = two_days_ago_vn.date()
+
+        y_prefix = yesterday_vn.strftime("%y%m%d")
+        two_d_prefix = two_days_ago_vn.strftime("%y%m%d")
+
+        # 2 Ca chốt hôm qua
+        shift_y1 = WorkShift(
+            id="shift-001",
+            branch_id="branch-001",
+            template_id="tmpl-001",
+            shift_name=f"Ca Sáng (06:00 - 14:00) - {yesterday_vn.strftime('%d/%m/%Y')}",
+            staff_id="user-002",
+            staff_name="Trần Thị Thu Ngân",
+            start_time=datetime.combine(yesterday_d, time(6, 0)).replace(tzinfo=vn_tz).astimezone(timezone.utc),
+            end_time=datetime.combine(yesterday_d, time(14, 0)).replace(tzinfo=vn_tz).astimezone(timezone.utc),
+            initial_cash=500000,
+            cash_revenue=100000,
+            card_revenue=380000,
+            qr_revenue=140000,
+            total_revenue=620000,
+            orders_count=3,
+            expected_cash=600000,
+            actual_cash=600000,
+            difference=0,
+            status="CLOSED",
+            note="Bàn giao ca sáng đủ tiền mặt, không thất thoát"
+        )
+
+        shift_y2 = WorkShift(
+            id="shift-002",
+            branch_id="branch-002",
+            template_id="tmpl-002",
+            shift_name=f"Ca Chiều (14:00 - 22:00) - {yesterday_vn.strftime('%d/%m/%Y')}",
+            staff_id="user-003",
+            staff_name="Lê Thu Hà",
+            start_time=datetime.combine(yesterday_d, time(14, 0)).replace(tzinfo=vn_tz).astimezone(timezone.utc),
+            end_time=datetime.combine(yesterday_d, time(22, 0)).replace(tzinfo=vn_tz).astimezone(timezone.utc),
+            initial_cash=500000,
+            cash_revenue=115000,
+            card_revenue=0,
+            qr_revenue=761000,
+            total_revenue=876000,
+            orders_count=3,
+            expected_cash=615000,
+            actual_cash=615000,
+            difference=0,
+            status="CLOSED",
+            note="Kết ca chiều khớp doanh thu POS"
+        )
+
+        shift_2d = WorkShift(
+            id="shift-003",
+            branch_id="branch-001",
+            template_id="tmpl-001",
+            shift_name=f"Ca Sáng (06:00 - 14:00) - {two_days_ago_vn.strftime('%d/%m/%Y')}",
+            staff_id="user-002",
+            staff_name="Trần Thị Thu Ngân",
+            start_time=datetime.combine(two_days_ago_d, time(6, 0)).replace(tzinfo=vn_tz).astimezone(timezone.utc),
+            end_time=datetime.combine(two_days_ago_d, time(14, 0)).replace(tzinfo=vn_tz).astimezone(timezone.utc),
+            initial_cash=500000,
+            cash_revenue=0,
+            card_revenue=0,
+            qr_revenue=320000,
+            total_revenue=320000,
+            orders_count=1,
+            expected_cash=500000,
+            actual_cash=500000,
+            difference=0,
+            status="CLOSED",
+            note="Ca sáng ngày hôm kia hoàn tất"
+        )
+
+        db.add_all([shift_y1, shift_y2, shift_2d])
+        db.flush()
+        print("✅ Đã nạp 3 ca làm việc mẫu (WorkShift) ĐÃ CHỐT (không có ca mở).")
+
+        # 4. TẠO TRANSACTIONS MẪU (SỔ QUỸ THU CHI)
+        tx1 = Transaction(
+            id="tx-001",
+            code=f"PT-{y_prefix}-001",
+            transaction_type="INCOME",
+            category="Thu doanh thu bán lẻ POS",
+            amount=2450000,
+            branch_id="branch-001",
+            payment_method="BANK_TRANSFER",
+            recipient_payer="Khách hàng tổng hợp",
+            note="Doanh thu bán hàng ca sáng chuyển khoản VietQR",
+            created_by="Hệ thống POS",
+            created_at=datetime.combine(yesterday_d, time(13, 30)).replace(tzinfo=vn_tz).astimezone(timezone.utc)
+        )
+        tx2 = Transaction(
+            id="tx-002",
+            code=f"PC-{y_prefix}-001",
+            transaction_type="EXPENSE",
+            category="Chi phí Nguyên vật liệu & Nhập hàng",
+            amount=850000,
+            branch_id="branch-001",
+            payment_method="BANK_TRANSFER",
+            recipient_payer="Công ty TNHH Bơ Sữa Pháp Anchor",
+            note="Nhập 20kg bơ lạt Pháp và 50kg bột mì T55",
+            created_by="Nguyễn Quản Trị",
+            created_at=datetime.combine(yesterday_d, time(10, 0)).replace(tzinfo=vn_tz).astimezone(timezone.utc)
+        )
+        tx3 = Transaction(
+            id="tx-003",
+            code=f"PC-{y_prefix}-002",
+            transaction_type="EXPENSE",
+            category="Chi phí Điện, Nước & Tiện ích",
+            amount=320000,
+            branch_id="branch-001",
+            payment_method="BANK_TRANSFER",
+            recipient_payer="Điện lực EVN TP.HCM",
+            note="Tiền điện lò nướng công nghiệp",
+            created_by="Nguyễn Quản Trị",
+            created_at=datetime.combine(yesterday_d, time(11, 30)).replace(tzinfo=vn_tz).astimezone(timezone.utc)
+        )
+        tx4 = Transaction(
+            id="tx-004",
+            code=f"PC-{y_prefix}-003",
+            transaction_type="EXPENSE",
+            category="Chi phí Bao bì & Hộp bánh",
+            amount=250000,
+            branch_id="branch-001",
+            payment_method="CASH",
+            recipient_payer="Xưởng in bao bì Kraft Tân Bình",
+            note="Nhập 500 túi giấy đựng croissant",
+            created_by="Trần Thị Thu Ngân",
+            created_at=datetime.combine(yesterday_d, time(9, 15)).replace(tzinfo=vn_tz).astimezone(timezone.utc)
+        )
+        tx5 = Transaction(
+            id="tx-005",
+            code=f"PT-{y_prefix}-002",
+            transaction_type="INCOME",
+            category="Thu bán bánh sinh nhật & sự kiện",
+            amount=1850000,
+            branch_id="branch-002",
+            payment_method="BANK_TRANSFER",
+            recipient_payer="Công ty Thiết Kế V-Creative",
+            note="Đơn bánh tiệc teabreak chi nhánh Thảo Điền",
+            created_by="Lê Thu Hà",
+            created_at=datetime.combine(yesterday_d, time(16, 0)).replace(tzinfo=vn_tz).astimezone(timezone.utc)
+        )
+        tx6 = Transaction(
+            id="tx-006",
+            code=f"PC-{y_prefix}-004",
+            transaction_type="EXPENSE",
+            category="Chi phí Nguyên vật liệu & Nhập hàng",
+            amount=620000,
+            branch_id="branch-002",
+            payment_method="CASH",
+            recipient_payer="Đại lý Men & Trứng tươi Q2",
+            note="Nhập trứng gà tươi và men nở lạt",
+            created_by="Lê Thu Hà",
+            created_at=datetime.combine(yesterday_d, time(17, 30)).replace(tzinfo=vn_tz).astimezone(timezone.utc)
+        )
+        db.add_all([tx1, tx2, tx3, tx4, tx5, tx6])
+        db.flush()
+        print("✅ Đã nạp 6 phiếu thu chi mẫu (Transactions).")
+
+        # 5. TẠO 7 ĐƠN HÀNG LỊCH SỬ GẮN VỚI CA ĐÃ CHỐT
+        # Đơn 1 (Thuộc shift_y1 - Hôm qua 08:30)
         order1 = Order(
             id="ord-1001",
-            code=f"HD-{today_date_str}-01",
+            code=f"HD-{y_prefix}-01",
             customer_name="Khách lẻ - Anh Hoàng",
             customer_phone="0933112233",
             branch_id="branch-001",
+            warehouse_id="wh-001",
             staff_id="user-002",
             staff_name="Trần Thị Thu Ngân",
             subtotal=140000,
@@ -353,20 +518,21 @@ def seed_database():
             payment_method="QR_TRANSFER",
             status="COMPLETED",
             note="Uống tại chỗ, ít ngọt",
-            created_at=now.replace(hour=8, minute=30, second=0)
+            created_at=datetime.combine(yesterday_d, time(8, 30)).replace(tzinfo=vn_tz).astimezone(timezone.utc)
         )
         order1.items = [
             OrderItem(product_id="prod-001", product_name="Croissant Bơ Pháp Truyền Thống", price=35000, quantity=2, subtotal=70000, image="https://images.unsplash.com/photo-1555507036-ab1f4038808a?w=400&q=80"),
             OrderItem(product_id="prod-008", product_name="Cà Phê Muối Kem Béo Artisan", price=35000, quantity=2, subtotal=70000, image="https://images.unsplash.com/photo-1514432324607-a09d9b4aefdd?w=400&q=80")
         ]
 
-        # Đơn hôm nay 2 (Trưa 11:15)
+        # Đơn 2 (Thuộc shift_y1 - Hôm qua 11:15)
         order2 = Order(
             id="ord-1002",
-            code=f"HD-{today_date_str}-02",
+            code=f"HD-{y_prefix}-02",
             customer_name="Chị Mai Lan",
             customer_phone="0918889999",
             branch_id="branch-001",
+            warehouse_id="wh-001",
             staff_id="user-002",
             staff_name="Trần Thị Thu Ngân",
             subtotal=380000,
@@ -375,7 +541,7 @@ def seed_database():
             payment_method="CARD",
             status="COMPLETED",
             note="Mang về, đóng hộp quà sinh nhật",
-            created_at=now.replace(hour=11, minute=15, second=0)
+            created_at=datetime.combine(yesterday_d, time(11, 15)).replace(tzinfo=vn_tz).astimezone(timezone.utc)
         )
         order2.items = [
             OrderItem(product_id="prod-005", product_name="Bánh Kem Dâu Tây Matcha Nhật Bản", price=280000, quantity=1, subtotal=280000, image="https://images.unsplash.com/photo-1565958011703-44f9829ba187?w=400&q=80"),
@@ -383,13 +549,14 @@ def seed_database():
             OrderItem(product_id="prod-007", product_name="Cinnamon Roll Phủ Kem Phô Mai", price=42000, quantity=1, subtotal=42000, image="https://images.unsplash.com/photo-1509440159596-0249088772ff?w=400&q=80")
         ]
 
-        # Đơn hôm nay 3 (Chiều 15:00)
+        # Đơn 3 (Thuộc shift_y2 - Hôm qua 15:00)
         order3 = Order(
             id="ord-1003",
-            code=f"HD-{today_date_str}-03",
+            code=f"HD-{y_prefix}-03",
             customer_name="Khách vãng lai",
             customer_phone=None,
             branch_id="branch-002",
+            warehouse_id="wh-003",
             staff_id="user-003",
             staff_name="Lê Thu Hà",
             subtotal=115000,
@@ -398,20 +565,21 @@ def seed_database():
             payment_method="CASH",
             status="COMPLETED",
             note="Cắt bánh Baguette thành lát",
-            created_at=now.replace(hour=15, minute=0, second=0)
+            created_at=datetime.combine(yesterday_d, time(15, 0)).replace(tzinfo=vn_tz).astimezone(timezone.utc)
         )
         order3.items = [
             OrderItem(product_id="prod-004", product_name="Baguette Pháp Truyền Thống", price=25000, quantity=2, subtotal=50000, image="https://images.unsplash.com/photo-1597079910443-60c43fc4f749?w=400&q=80"),
             OrderItem(product_id="prod-002", product_name="Sourdough Men Tự Nhiên (500g)", price=65000, quantity=1, subtotal=65000, image="https://images.unsplash.com/photo-1589367920969-ab8e050bbb04?w=400&q=80")
         ]
 
-        # Đơn hôm nay 4 (Tối 18:20)
+        # Đơn 4 (Thuộc shift_2d - Hôm kia 10:20)
         order4 = Order(
             id="ord-1004",
-            code=f"HD-{today_date_str}-04",
+            code=f"HD-{two_d_prefix}-01",
             customer_name="Bác Hùng Bakery Club",
             customer_phone="0909090909",
             branch_id="branch-001",
+            warehouse_id="wh-001",
             staff_id="user-002",
             staff_name="Trần Thị Thu Ngân",
             subtotal=340000,
@@ -420,7 +588,7 @@ def seed_database():
             payment_method="QR_TRANSFER",
             status="COMPLETED",
             note="Ưu đãi thành viên VIP",
-            created_at=now.replace(hour=18, minute=20, second=0)
+            created_at=datetime.combine(two_days_ago_d, time(10, 20)).replace(tzinfo=vn_tz).astimezone(timezone.utc)
         )
         order4.items = [
             OrderItem(product_id="prod-001", product_name="Croissant Bơ Pháp Truyền Thống", price=35000, quantity=4, subtotal=140000, image="https://images.unsplash.com/photo-1555507036-ab1f4038808a?w=400&q=80"),
@@ -428,13 +596,14 @@ def seed_database():
             OrderItem(product_id="prod-008", product_name="Cà Phê Muối Kem Béo Artisan", price=35000, quantity=2, subtotal=70000, image="https://images.unsplash.com/photo-1514432324607-a09d9b4aefdd?w=400&q=80")
         ]
 
-        # Đơn hôm nay 5 (Tối 20:10)
+        # Đơn 5 (Thuộc shift_y2 - Hôm qua 20:10)
         order5 = Order(
             id="ord-1005",
-            code=f"HD-{today_date_str}-05",
+            code=f"HD-{y_prefix}-05",
             customer_name="Khách công ty FPT",
             customer_phone="0987654321",
             branch_id="branch-002",
+            warehouse_id="wh-003",
             staff_id="user-003",
             staff_name="Lê Thu Hà",
             subtotal=650000,
@@ -443,7 +612,7 @@ def seed_database():
             payment_method="QR_TRANSFER",
             status="COMPLETED",
             note="Tiệc trà teabreak chiều",
-            created_at=now.replace(hour=20, minute=10, second=0)
+            created_at=datetime.combine(yesterday_d, time(20, 10)).replace(tzinfo=vn_tz).astimezone(timezone.utc)
         )
         order5.items = [
             OrderItem(product_id="prod-001", product_name="Croissant Bơ Pháp Truyền Thống", price=35000, quantity=10, subtotal=350000, image="https://images.unsplash.com/photo-1555507036-ab1f4038808a?w=400&q=80"),
@@ -451,13 +620,14 @@ def seed_database():
             OrderItem(product_id="prod-004", product_name="Baguette Pháp Truyền Thống", price=25000, quantity=4, subtotal=100000, image="https://images.unsplash.com/photo-1597079910443-60c43fc4f749?w=400&q=80")
         ]
 
-        # Đơn hôm qua 1
+        # Đơn hôm qua 1 (Thuộc shift_y1 - Hôm qua 09:00)
         order_y1 = Order(
             id="ord-0991",
-            code=f"HD-{yesterday_date_str}-01",
+            code=f"HD-{y_prefix}-06",
             customer_name="Cô Thu Ba",
             customer_phone="0903344556",
             branch_id="branch-001",
+            warehouse_id="wh-001",
             staff_id="user-002",
             staff_name="Trần Thị Thu Ngân",
             subtotal=100000,
@@ -466,20 +636,21 @@ def seed_database():
             payment_method="CASH",
             status="COMPLETED",
             note="Khách quen",
-            created_at=yesterday.replace(hour=9, minute=0, second=0)
+            created_at=datetime.combine(yesterday_d, time(9, 0)).replace(tzinfo=vn_tz).astimezone(timezone.utc)
         )
         order_y1.items = [
             OrderItem(product_id="prod-002", product_name="Sourdough Men Tự Nhiên (500g)", price=65000, quantity=1, subtotal=65000, image="https://images.unsplash.com/photo-1589367920969-ab8e050bbb04?w=400&q=80"),
             OrderItem(product_id="prod-008", product_name="Cà Phê Muối Kem Béo Artisan", price=35000, quantity=1, subtotal=35000, image="https://images.unsplash.com/photo-1514432324607-a09d9b4aefdd?w=400&q=80")
         ]
 
-        # Đơn hôm qua 2
+        # Đơn hôm qua 2 (Thuộc shift_y2 - Hôm qua 16:45)
         order_y2 = Order(
             id="ord-0992",
-            code=f"HD-{yesterday_date_str}-02",
+            code=f"HD-{y_prefix}-07",
             customer_name="Anh Tuấn",
             customer_phone="0912233445",
             branch_id="branch-002",
+            warehouse_id="wh-003",
             staff_id="user-003",
             staff_name="Lê Thu Hà",
             subtotal=131000,
@@ -488,7 +659,7 @@ def seed_database():
             payment_method="QR_TRANSFER",
             status="COMPLETED",
             note="Giao trước 17h",
-            created_at=yesterday.replace(hour=16, minute=45, second=0)
+            created_at=datetime.combine(yesterday_d, time(16, 45)).replace(tzinfo=vn_tz).astimezone(timezone.utc)
         )
         order_y2.items = [
             OrderItem(product_id="prod-007", product_name="Cinnamon Roll Phủ Kem Phô Mai", price=42000, quantity=1, subtotal=42000, image="https://images.unsplash.com/photo-1509440159596-0249088772ff?w=400&q=80"),
@@ -498,7 +669,7 @@ def seed_database():
 
         db.add_all([order1, order2, order3, order4, order5, order_y1, order_y2])
         db.commit()
-        print("✅ Đã nạp 7 đơn hàng mẫu (kèm chi tiết món và số liệu doanh thu biểu đồ).")
+        print("✅ Đã nạp 7 đơn hàng mẫu (gắn với ca đã chốt của ngày trước).")
 
         # 3. TẠO LANDING PAGE CONFIG
         db.query(LandingPageConfig).delete()
@@ -531,7 +702,6 @@ def seed_database():
         ]
         db.add_all(templates)
 
-        from app.routers.settings import DEFAULT_SETTINGS
         sys_settings = [SystemSetting(key=k, value=str(v)) for k, v in DEFAULT_SETTINGS.items()]
         db.add_all(sys_settings)
         db.commit()

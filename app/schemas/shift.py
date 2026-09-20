@@ -13,6 +13,31 @@ class WorkShiftBase(BaseModel):
     initial_cash: int = 500000
 
 
+class OpenShiftRequest(BaseModel):
+    model_config = ConfigDict(
+        alias_generator=to_camel,
+        populate_by_name=True
+    )
+    initial_cash: int = 500000
+    branch_id: Optional[str] = None
+    note: Optional[str] = None
+
+
+class ShiftScheduleResponse(BaseModel):
+    model_config = ConfigDict(
+        alias_generator=to_camel,
+        populate_by_name=True
+    )
+    template_id: Optional[str] = None
+    name: str
+    start_time: Optional[str] = None
+    end_time: Optional[str] = None
+    shift_name: str
+    display_text: str
+    is_working_hour: bool
+    default_initial_cash: int = 500000
+
+
 class CloseShiftRequest(BaseModel):
     model_config = ConfigDict(
         alias_generator=to_camel,
@@ -30,6 +55,8 @@ class WorkShiftResponse(BaseModel):
     )
     id: str
     shift_name: str
+    branch_id: Optional[str] = None
+    template_id: Optional[str] = None
     staff_id: str
     staff_name: str
     start_time: datetime

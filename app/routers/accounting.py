@@ -8,6 +8,7 @@ from app.models.user import User
 from app.models.branch import Branch
 from app.models.transaction import Transaction
 from app.models.order import Order
+from app.core.timezone import get_now_vn, get_now_utc
 from app.schemas.transaction import (
     TransactionResponse,
     TransactionCreate,
@@ -20,7 +21,8 @@ router = APIRouter(prefix="/accounting", tags=["Basic Accounting & Cash Flow"])
 
 def generate_tx_code(tx_type: str, count: int) -> str:
     prefix = "PT" if tx_type == "INCOME" else "PC"
-    date_str = datetime.now(timezone.utc).strftime("%y%m%d")
+    now_vn = get_now_vn()
+    date_str = now_vn.strftime("%y%m%d")
     return f"{prefix}-{date_str}-{count + 1:03d}"
 
 
@@ -29,102 +31,12 @@ def get_transactions(
     transaction_type: Optional[str] = Query(default=None, alias="type"),
     category: Optional[str] = Query(default=None),
     branch_id: Optional[str] = Query(default=None),
-    branch_id_camel: Optional[str] = Query(default=None, alias="branchId"),
+    branchId: Optional[str] = Query(default=None),
     db: Session = Depends(get_db),
     current_user: User = Depends(require_permission("accounting:read"))
 ):
-    """List cash receipts & payment vouchers."""
-    target_branch = branch_id or branch_id_camel
-
-    # Seed sample transactions if empty
-    if db.query(Transaction).count() == 0:
-        b1 = db.query(Branch).filter(Branch.code == "CN-Q1").first() or db.query(Branch).first()
-        b2 = db.query(Branch).filter(Branch.code == "CN-TD").first() or db.query(Branch).offset(1).first()
-        b1_id = b1.id if b1 else "branch-001"
-        b2_id = b2.id if b2 else "branch-002"
-
-        samples = [
-            Transaction(
-                id="tx-001",
-                code="PT-260816-001",
-                transaction_type="INCOME",
-                category="Thu doanh thu bán lẻ POS",
-                amount=2450000,
-                branch_id=b1_id,
-                payment_method="BANK_TRANSFER",
-                recipient_payer="Khách hàng tổng hợp",
-                note="Doanh thu bán hàng ca sáng chuyển khoản VietQR",
-                created_by="Hệ thống POS",
-                created_at=datetime.now(timezone.utc) - timedelta(hours=8)
-            ),
-            Transaction(
-                id="tx-002",
-                code="PC-260816-001",
-                transaction_type="EXPENSE",
-                category="Chi phí Nguyên vật liệu & Nhập hàng",
-                amount=850000,
-                branch_id=b1_id,
-                payment_method="BANK_TRANSFER",
-                recipient_payer="Công ty TNHH Bơ Sữa Pháp Anchor",
-                note="Nhập 20kg bơ lạt Pháp và 50kg bột mì T55",
-                created_by="Nguyễn Quản Trị",
-                created_at=datetime.now(timezone.utc) - timedelta(hours=6)
-            ),
-            Transaction(
-                id="tx-003",
-                code="PC-260816-002",
-                transaction_type="EXPENSE",
-                category="Chi phí Điện, Nước & Tiện ích",
-                amount=320000,
-                branch_id=b1_id,
-                payment_method="BANK_TRANSFER",
-                recipient_payer="Điện lực EVN TP.HCM",
-                note="Tiền điện lò nướng công nghiệp tuần 2",
-                created_by="Nguyễn Quản Trị",
-                created_at=datetime.now(timezone.utc) - timedelta(hours=4)
-            ),
-            Transaction(
-                id="tx-004",
-                code="PC-260816-003",
-                transaction_type="EXPENSE",
-                category="Chi phí Bao bì & Hộp bánh",
-                amount=250000,
-                branch_id=b1_id,
-                payment_method="CASH",
-                recipient_payer="Xưởng in bao bì Kraft Tân Bình",
-                note="Nhập 500 túi giấy đựng croissant & hộp bánh sinh nhật",
-                created_by="Trần Thị Thu Ngân",
-                created_at=datetime.now(timezone.utc) - timedelta(hours=2)
-            ),
-            Transaction(
-                id="tx-005",
-                code="PT-260816-002",
-                transaction_type="INCOME",
-                category="Thu bán bánh sinh nhật & sự kiện",
-                amount=1850000,
-                branch_id=b2_id,
-                payment_method="BANK_TRANSFER",
-                recipient_payer="Công ty Thiết Kế V-Creative",
-                note="Đơn bánh tiệc teabreak chi nhánh Thảo Điền",
-                created_by="Lê Thu Hà",
-                created_at=datetime.now(timezone.utc) - timedelta(hours=5)
-            ),
-            Transaction(
-                id="tx-006",
-                code="PC-260816-004",
-                transaction_type="EXPENSE",
-                category="Chi phí Nguyên vật liệu & Nhập hàng",
-                amount=620000,
-                branch_id=b2_id,
-                payment_method="CASH",
-                recipient_payer="Đại lý Men & Trứng tươi Q2",
-                note="Nhập trứng gà tươi và men nở lạt",
-                created_by="Lê Thu Hà",
-                created_at=datetime.now(timezone.utc) - timedelta(hours=3)
-            ),
-        ]
-        db.add_all(samples)
-        db.commit()
+    """List cash receipts & payment vouchers without hidden auto-seeding."""
+    target_branch = branchId or branch_id
 
     query = db.query(Transaction)
 
@@ -178,7 +90,8 @@ def create_transaction(
         payment_method=req.payment_method,
         recipient_payer=req.recipient_payer.strip(),
         note=req.note.strip() if req.note else None,
-        created_by=admin.full_name
+        created_by=admin.full_name,
+        created_at=get_now_utc()
     )
     db.add(tx)
     db.commit()
@@ -205,12 +118,12 @@ def create_transaction(
 @router.get("/summary", response_model=CashFlowSummary)
 def get_cash_flow_summary(
     branch_id: Optional[str] = Query(default=None),
-    branch_id_camel: Optional[str] = Query(default=None, alias="branchId"),
+    branchId: Optional[str] = Query(default=None),
     db: Session = Depends(get_db),
     current_user: User = Depends(require_permission("accounting:read"))
 ):
     """Get cash flow summary and account balances."""
-    target_branch = branch_id or branch_id_camel
+    target_branch = branchId or branch_id
     query = db.query(Transaction)
     if target_branch and target_branch != "ALL":
         query = query.filter(Transaction.branch_id == target_branch)
@@ -222,7 +135,7 @@ def get_cash_flow_summary(
     net_cash_flow = total_income - total_expense
 
     cash_txs = [t for t in txs if t.payment_method == "CASH"]
-    bank_txs = [t for t in txs if t.payment_method == "BANK_TRANSFER"]
+    bank_txs = [t for t in txs if t.payment_method in ["BANK_TRANSFER", "QR_TRANSFER"]]
 
     cash_balance = 2000000 + sum(t.amount if t.transaction_type == "INCOME" else -t.amount for t in cash_txs)
     bank_balance = 15000000 + sum(t.amount if t.transaction_type == "INCOME" else -t.amount for t in bank_txs)
@@ -236,8 +149,9 @@ def get_cash_flow_summary(
         else:
             expense_by_category[t.category] = expense_by_category.get(t.category, 0) + t.amount
 
+    now_vn = get_now_vn()
     return CashFlowSummary(
-        period_label="Tháng này (08/2026)",
+        period_label=f"Tháng {now_vn.strftime('%m/%Y')}",
         total_income=total_income,
         total_expense=total_expense,
         net_cash_flow=net_cash_flow,
@@ -252,12 +166,12 @@ def get_cash_flow_summary(
 @router.get("/pnl", response_model=PnLReport)
 def get_pnl_report(
     branch_id: Optional[str] = Query(default=None),
-    branch_id_camel: Optional[str] = Query(default=None, alias="branchId"),
+    branchId: Optional[str] = Query(default=None),
     db: Session = Depends(get_db),
     current_user: User = Depends(require_permission("accounting:pnl"))
 ):
     """Get Profit and Loss (P&L) Report."""
-    target_branch = branch_id or branch_id_camel
+    target_branch = branchId or branch_id
 
     # Compute gross revenue from completed orders
     order_query = db.query(Order).filter(Order.status == "COMPLETED")
@@ -274,21 +188,21 @@ def get_pnl_report(
     txs = tx_query.all()
 
     other_income = sum(t.amount for t in txs if t.transaction_type == "INCOME" and "POS" not in t.category)
-    gross_revenue = pos_revenue + other_income if pos_revenue > 0 else 5500000
+    gross_revenue = pos_revenue + other_income
 
-    # COGS (Nguyên vật liệu & Nhập hàng)
+    # COGS
     cogs_txs = [t for t in txs if t.transaction_type == "EXPENSE" and ("Nguyên vật liệu" in t.category or "Bao bì" in t.category)]
     cogs = sum(t.amount for t in cogs_txs)
-    if cogs == 0:
-        cogs = int(gross_revenue * 0.35)  # Industry baseline 35% COGS for bakery
+    if cogs == 0 and gross_revenue > 0:
+        cogs = int(gross_revenue * 0.35)
 
     gross_profit = gross_revenue - cogs
     gross_margin_percent = round((gross_profit / gross_revenue * 100), 1) if gross_revenue > 0 else 0.0
 
-    # OPEX (Mặt bằng, Điện nước, Lương, Khác)
+    # OPEX
     opex_txs = [t for t in txs if t.transaction_type == "EXPENSE" and t not in cogs_txs]
     operating_expenses = sum(t.amount for t in opex_txs)
-    if operating_expenses == 0:
+    if operating_expenses == 0 and gross_revenue > 0:
         operating_expenses = int(gross_revenue * 0.25)
 
     net_profit = gross_profit - operating_expenses
@@ -299,8 +213,9 @@ def get_pnl_report(
         if t.transaction_type == "EXPENSE":
             expenses_breakdown[t.category] = expenses_breakdown.get(t.category, 0) + t.amount
 
+    now_vn = get_now_vn()
     return PnLReport(
-        period_label="Tháng 08/2026",
+        period_label=f"Tháng {now_vn.strftime('%m/%Y')}",
         gross_revenue=gross_revenue,
         cogs=cogs,
         gross_profit=gross_profit,

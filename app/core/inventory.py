@@ -9,6 +9,7 @@ def recalc_product_stock(db: Session, product_id: str) -> int:
     Calculate SUM(StockItem.quantity) for a product across all warehouses
     and synchronize Product.stock so that Product.stock is always a cached sum.
     """
+    db.flush()
     total_qty = db.query(func.coalesce(func.sum(StockItem.quantity), 0))\
         .filter(StockItem.product_id == product_id)\
         .scalar()
