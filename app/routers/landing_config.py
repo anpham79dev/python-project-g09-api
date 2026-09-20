@@ -205,7 +205,7 @@ DEFAULT_LANDING_CONFIG = {
 }
 
 
-def get_or_create_config(db: Session) -> LandingPageConfig:
+def get_or_create_config(db: Session, persist_if_missing: bool = False) -> LandingPageConfig:
     config = db.query(LandingPageConfig).filter(LandingPageConfig.id == "landing-config-current").first()
     if not config:
         config = LandingPageConfig(
@@ -224,16 +224,17 @@ def get_or_create_config(db: Session) -> LandingPageConfig:
             updated_at=datetime.now(timezone.utc),
             updated_by="system"
         )
-        db.add(config)
-        db.commit()
-        db.refresh(config)
+        if persist_if_missing:
+            db.add(config)
+            db.commit()
+            db.refresh(config)
     return config
 
 
 @router.get("/landing-page-config", response_model=LandingPageConfigSchema)
 def get_public_landing_config(db: Session = Depends(get_db)):
     """Public API: Get current published landing page configuration for marketing route '/'."""
-    config = get_or_create_config(db)
+    config = get_or_create_config(db, persist_if_missing=False)
     return config
 
 
@@ -243,7 +244,7 @@ def get_admin_landing_config(
     db: Session = Depends(get_db)
 ):
     """SuperAdmin API: Get current draft/editable landing page configuration."""
-    config = get_or_create_config(db)
+    config = get_or_create_config(db, persist_if_missing=False)
     return config
 
 
@@ -254,7 +255,7 @@ def update_admin_landing_config(
     db: Session = Depends(get_db)
 ):
     """SuperAdmin API: Save and publish updated landing page configuration."""
-    config = get_or_create_config(db)
+    config = get_or_create_config(db, persist_if_missing=True)
     
     config.brand = payload.brand.model_dump(by_alias=True)
     config.nav = [item.model_dump(by_alias=True) for item in payload.nav]

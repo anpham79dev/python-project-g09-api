@@ -187,7 +187,18 @@ def get_pnl_report(
         tx_query = tx_query.filter(Transaction.branch_id == target_branch)
     txs = tx_query.all()
 
-    other_income = sum(t.amount for t in txs if t.transaction_type == "INCOME" and "POS" not in t.category)
+    def is_shift_sales_tx(t: Transaction) -> bool:
+        cat = (t.category or "").lower()
+        if "pos" in cat or "bán hàng" in cat or "bán lẻ" in cat:
+            return True
+        if t.created_by == "Hệ thống (Kết ca)" and "thừa" not in cat:
+            return True
+        return False
+
+    other_income = sum(
+        t.amount for t in txs
+        if t.transaction_type == "INCOME" and not is_shift_sales_tx(t)
+    )
     gross_revenue = pos_revenue + other_income
 
     # COGS

@@ -227,7 +227,7 @@ def seed_database():
                 price=25000,
                 stock=35,
                 description="Ổ bánh dài kinh điển nước Pháp, vỏ giòn rụm, ruột dẻo thơm hạt lúa mạch.",
-                image="https://images.unsplash.com/photo-1597079910443-60c43fc4f749?w=400&q=80",
+                image="https://images.unsplash.com/photo-1549931319-a545dcf3bc73?w=400&q=80",
                 created_at=datetime.now(timezone.utc) - timedelta(days=14)
             ),
             Product(
@@ -418,22 +418,107 @@ def seed_database():
         db.flush()
         print("✅ Đã nạp 3 ca làm việc mẫu (WorkShift) ĐÃ CHỐT (không có ca mở).")
 
-        # 4. TẠO TRANSACTIONS MẪU (SỔ QUỸ THU CHI)
-        tx1 = Transaction(
+        # 4. TẠO TRANSACTIONS MẪU (SỔ QUỸ THU CHI) GẮN VỚI CÁC CA ĐÃ CHỐT VÀ CÁC KHOẢN CHI THỰC TẾ
+        # --- Bút toán tự động từ kết ca shift_y1 (Ca Sáng hôm qua CN Q1) ---
+        tx_y1_cash = Transaction(
             id="tx-001",
             code=f"PT-{y_prefix}-001",
             transaction_type="INCOME",
-            category="Thu doanh thu bán lẻ POS",
-            amount=2450000,
+            category="Doanh thu bán hàng (POS)",
+            amount=100000,
+            branch_id="branch-001",
+            payment_method="CASH",
+            recipient_payer="Trần Thị Thu Ngân",
+            note=f"Doanh thu bán hàng tiền mặt - {shift_y1.shift_name} [Mã ca: {shift_y1.id}]",
+            created_by="Hệ thống (Kết ca)",
+            created_at=datetime.combine(yesterday_d, time(14, 0)).replace(tzinfo=vn_tz).astimezone(timezone.utc)
+        )
+        tx_y1_card = Transaction(
+            id="tx-002",
+            code=f"PT-{y_prefix}-002",
+            transaction_type="INCOME",
+            category="Doanh thu bán hàng (POS)",
+            amount=380000,
             branch_id="branch-001",
             payment_method="BANK_TRANSFER",
-            recipient_payer="Khách hàng tổng hợp",
-            note="Doanh thu bán hàng ca sáng chuyển khoản VietQR",
-            created_by="Hệ thống POS",
-            created_at=datetime.combine(yesterday_d, time(13, 30)).replace(tzinfo=vn_tz).astimezone(timezone.utc)
+            recipient_payer="Trần Thị Thu Ngân",
+            note=f"Doanh thu bán hàng thẻ POS - {shift_y1.shift_name} [Mã ca: {shift_y1.id}]",
+            created_by="Hệ thống (Kết ca)",
+            created_at=datetime.combine(yesterday_d, time(14, 0)).replace(tzinfo=vn_tz).astimezone(timezone.utc)
         )
-        tx2 = Transaction(
-            id="tx-002",
+        tx_y1_qr = Transaction(
+            id="tx-003",
+            code=f"PT-{y_prefix}-003",
+            transaction_type="INCOME",
+            category="Doanh thu bán hàng (POS)",
+            amount=140000,
+            branch_id="branch-001",
+            payment_method="BANK_TRANSFER",
+            recipient_payer="Trần Thị Thu Ngân",
+            note=f"Doanh thu bán hàng chuyển khoản QR - {shift_y1.shift_name} [Mã ca: {shift_y1.id}]",
+            created_by="Hệ thống (Kết ca)",
+            created_at=datetime.combine(yesterday_d, time(14, 0)).replace(tzinfo=vn_tz).astimezone(timezone.utc)
+        )
+
+        # --- Bút toán tự động từ kết ca shift_y2 (Ca Chiều hôm qua CN Thảo Điền) ---
+        tx_y2_cash = Transaction(
+            id="tx-004",
+            code=f"PT-{y_prefix}-004",
+            transaction_type="INCOME",
+            category="Doanh thu bán hàng (POS)",
+            amount=115000,
+            branch_id="branch-002",
+            payment_method="CASH",
+            recipient_payer="Lê Thu Hà",
+            note=f"Doanh thu bán hàng tiền mặt - {shift_y2.shift_name} [Mã ca: {shift_y2.id}]",
+            created_by="Hệ thống (Kết ca)",
+            created_at=datetime.combine(yesterday_d, time(22, 0)).replace(tzinfo=vn_tz).astimezone(timezone.utc)
+        )
+        tx_y2_qr = Transaction(
+            id="tx-005",
+            code=f"PT-{y_prefix}-005",
+            transaction_type="INCOME",
+            category="Doanh thu bán hàng (POS)",
+            amount=761000,
+            branch_id="branch-002",
+            payment_method="BANK_TRANSFER",
+            recipient_payer="Lê Thu Hà",
+            note=f"Doanh thu bán hàng chuyển khoản QR - {shift_y2.shift_name} [Mã ca: {shift_y2.id}]",
+            created_by="Hệ thống (Kết ca)",
+            created_at=datetime.combine(yesterday_d, time(22, 0)).replace(tzinfo=vn_tz).astimezone(timezone.utc)
+        )
+
+        # --- Bút toán tự động từ kết ca shift_2d (Ca Sáng 2 ngày trước CN Q1) ---
+        tx_2d_qr = Transaction(
+            id="tx-007",
+            code=f"PT-{two_d_prefix}-001",
+            transaction_type="INCOME",
+            category="Doanh thu bán hàng (POS)",
+            amount=320000,
+            branch_id="branch-001",
+            payment_method="BANK_TRANSFER",
+            recipient_payer="Trần Thị Thu Ngân",
+            note=f"Doanh thu bán hàng chuyển khoản QR - {shift_2d.shift_name} [Mã ca: {shift_2d.id}]",
+            created_by="Hệ thống (Kết ca)",
+            created_at=datetime.combine(two_days_ago_d, time(14, 0)).replace(tzinfo=vn_tz).astimezone(timezone.utc)
+        )
+
+        # --- Các bút toán thu khác & chi phí thực tế ---
+        tx_income_event = Transaction(
+            id="tx-006",
+            code=f"PT-{y_prefix}-006",
+            transaction_type="INCOME",
+            category="Thu bán bánh sinh nhật & sự kiện",
+            amount=1850000,
+            branch_id="branch-002",
+            payment_method="BANK_TRANSFER",
+            recipient_payer="Công ty Thiết Kế V-Creative",
+            note="Đơn bánh tiệc teabreak chi nhánh Thảo Điền",
+            created_by="Lê Thu Hà",
+            created_at=datetime.combine(yesterday_d, time(16, 0)).replace(tzinfo=vn_tz).astimezone(timezone.utc)
+        )
+        tx_exp1 = Transaction(
+            id="tx-008",
             code=f"PC-{y_prefix}-001",
             transaction_type="EXPENSE",
             category="Chi phí Nguyên vật liệu & Nhập hàng",
@@ -445,8 +530,8 @@ def seed_database():
             created_by="Nguyễn Quản Trị",
             created_at=datetime.combine(yesterday_d, time(10, 0)).replace(tzinfo=vn_tz).astimezone(timezone.utc)
         )
-        tx3 = Transaction(
-            id="tx-003",
+        tx_exp2 = Transaction(
+            id="tx-009",
             code=f"PC-{y_prefix}-002",
             transaction_type="EXPENSE",
             category="Chi phí Điện, Nước & Tiện ích",
@@ -458,8 +543,8 @@ def seed_database():
             created_by="Nguyễn Quản Trị",
             created_at=datetime.combine(yesterday_d, time(11, 30)).replace(tzinfo=vn_tz).astimezone(timezone.utc)
         )
-        tx4 = Transaction(
-            id="tx-004",
+        tx_exp3 = Transaction(
+            id="tx-010",
             code=f"PC-{y_prefix}-003",
             transaction_type="EXPENSE",
             category="Chi phí Bao bì & Hộp bánh",
@@ -471,21 +556,8 @@ def seed_database():
             created_by="Trần Thị Thu Ngân",
             created_at=datetime.combine(yesterday_d, time(9, 15)).replace(tzinfo=vn_tz).astimezone(timezone.utc)
         )
-        tx5 = Transaction(
-            id="tx-005",
-            code=f"PT-{y_prefix}-002",
-            transaction_type="INCOME",
-            category="Thu bán bánh sinh nhật & sự kiện",
-            amount=1850000,
-            branch_id="branch-002",
-            payment_method="BANK_TRANSFER",
-            recipient_payer="Công ty Thiết Kế V-Creative",
-            note="Đơn bánh tiệc teabreak chi nhánh Thảo Điền",
-            created_by="Lê Thu Hà",
-            created_at=datetime.combine(yesterday_d, time(16, 0)).replace(tzinfo=vn_tz).astimezone(timezone.utc)
-        )
-        tx6 = Transaction(
-            id="tx-006",
+        tx_exp4 = Transaction(
+            id="tx-011",
             code=f"PC-{y_prefix}-004",
             transaction_type="EXPENSE",
             category="Chi phí Nguyên vật liệu & Nhập hàng",
@@ -497,9 +569,16 @@ def seed_database():
             created_by="Lê Thu Hà",
             created_at=datetime.combine(yesterday_d, time(17, 30)).replace(tzinfo=vn_tz).astimezone(timezone.utc)
         )
-        db.add_all([tx1, tx2, tx3, tx4, tx5, tx6])
+        all_txs = [
+            tx_y1_cash, tx_y1_card, tx_y1_qr,
+            tx_y2_cash, tx_y2_qr,
+            tx_2d_qr,
+            tx_income_event,
+            tx_exp1, tx_exp2, tx_exp3, tx_exp4
+        ]
+        db.add_all(all_txs)
         db.flush()
-        print("✅ Đã nạp 6 phiếu thu chi mẫu (Transactions).")
+        print(f"✅ Đã nạp {len(all_txs)} phiếu thu chi mẫu (Transactions) bao gồm các phiếu tự động kết ca.")
 
         # 5. TẠO 7 ĐƠN HÀNG LỊCH SỬ GẮN VỚI CA ĐÃ CHỐT
         # Đơn 1 (Thuộc shift_y1 - Hôm qua 08:30)
@@ -568,7 +647,7 @@ def seed_database():
             created_at=datetime.combine(yesterday_d, time(15, 0)).replace(tzinfo=vn_tz).astimezone(timezone.utc)
         )
         order3.items = [
-            OrderItem(product_id="prod-004", product_name="Baguette Pháp Truyền Thống", price=25000, quantity=2, subtotal=50000, image="https://images.unsplash.com/photo-1597079910443-60c43fc4f749?w=400&q=80"),
+            OrderItem(product_id="prod-004", product_name="Baguette Pháp Truyền Thống", price=25000, quantity=2, subtotal=50000, image="https://images.unsplash.com/photo-1549931319-a545dcf3bc73?w=400&q=80"),
             OrderItem(product_id="prod-002", product_name="Sourdough Men Tự Nhiên (500g)", price=65000, quantity=1, subtotal=65000, image="https://images.unsplash.com/photo-1589367920969-ab8e050bbb04?w=400&q=80")
         ]
 
@@ -617,7 +696,7 @@ def seed_database():
         order5.items = [
             OrderItem(product_id="prod-001", product_name="Croissant Bơ Pháp Truyền Thống", price=35000, quantity=10, subtotal=350000, image="https://images.unsplash.com/photo-1555507036-ab1f4038808a?w=400&q=80"),
             OrderItem(product_id="prod-003", product_name="Pain au Chocolat (Bánh Sô-cô-la)", price=40000, quantity=5, subtotal=200000, image="https://images.unsplash.com/photo-1608198093002-ad4e005484ec?w=400&q=80"),
-            OrderItem(product_id="prod-004", product_name="Baguette Pháp Truyền Thống", price=25000, quantity=4, subtotal=100000, image="https://images.unsplash.com/photo-1597079910443-60c43fc4f749?w=400&q=80")
+            OrderItem(product_id="prod-004", product_name="Baguette Pháp Truyền Thống", price=25000, quantity=4, subtotal=100000, image="https://images.unsplash.com/photo-1549931319-a545dcf3bc73?w=400&q=80")
         ]
 
         # Đơn hôm qua 1 (Thuộc shift_y1 - Hôm qua 09:00)

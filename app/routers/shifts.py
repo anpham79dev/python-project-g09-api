@@ -7,6 +7,7 @@ from app.dependencies import get_db, get_current_user, require_permission
 from app.models.user import User
 from app.models.order import Order
 from app.models.shift import WorkShift
+from app.models.transaction import Transaction
 from app.schemas.shift import (
     WorkShiftResponse,
     OpenShiftRequest,
@@ -76,8 +77,6 @@ def get_current_shift(
         return None
 
     open_shift = _calculate_shift_live_stats(open_shift, db)
-    db.commit()
-    db.refresh(open_shift)
     return open_shift
 
 
@@ -131,13 +130,35 @@ def open_shift(
     return new_shift
 
 
+def _generate_shift_tx_code(db: Session, tx_type: str, used_codes: set) -> str:
+    prefix = "PT" if tx_type == "INCOME" else "PC"
+    now_vn = get_now_vn()
+    date_str = now_vn.strftime("%y%m%d")
+
+    existing_in_db = set(
+        row[0] for row in db.query(Transaction.code).filter(
+            Transaction.code.like(f"{prefix}-{date_str}-%")
+        ).all()
+    )
+    all_known = existing_in_db | used_codes
+    seq = len(all_known) + 1
+    candidate = f"{prefix}-{date_str}-{seq:03d}"
+    while candidate in all_known:
+        seq += 1
+        candidate = f"{prefix}-{date_str}-{seq:03d}"
+    used_codes.add(candidate)
+    return candidate
+
+
 @router.post("/close", response_model=WorkShiftResponse)
 def close_current_shift(
     req: CloseShiftRequest,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """Close the current staff member's shift, reconcile cash, and record discrepancies."""
+    """Close the current staff member's shift, reconcile cash, and record discrepancies.
+    Automatically generates accounting vouchers (Transactions) in the same DB transaction.
+    """
     open_shift = db.query(WorkShift).filter(
         WorkShift.staff_id == current_user.id,
         WorkShift.status == "OPEN"
@@ -159,6 +180,94 @@ def close_current_shift(
     open_shift.note = req.note
     open_shift.end_time = get_now_utc()
     open_shift.status = "CLOSED"
+
+    # Idempotency check: Ensure no duplicate vouchers generated for this shift
+    shift_tag = f"[Mã ca: {open_shift.id}]"
+    existing_voucher = db.query(Transaction).filter(
+        Transaction.note.like(f"%{shift_tag}%")
+    ).first()
+
+    if not existing_voucher:
+        used_codes = set()
+        created_at = open_shift.end_time or get_now_utc()
+
+        # 1. Cash Revenue Voucher (if > 0)
+        if open_shift.cash_revenue > 0:
+            tx_cash = Transaction(
+                code=_generate_shift_tx_code(db, "INCOME", used_codes),
+                transaction_type="INCOME",
+                category="Doanh thu bán hàng (POS)",
+                amount=int(open_shift.cash_revenue),
+                branch_id=open_shift.branch_id,
+                payment_method="CASH",
+                recipient_payer=open_shift.staff_name,
+                note=f"Doanh thu bán hàng tiền mặt - {open_shift.shift_name} {shift_tag}",
+                created_by="Hệ thống (Kết ca)",
+                created_at=created_at
+            )
+            db.add(tx_cash)
+
+        # 2. QR Transfer Revenue Voucher (if > 0)
+        if open_shift.qr_revenue > 0:
+            tx_qr = Transaction(
+                code=_generate_shift_tx_code(db, "INCOME", used_codes),
+                transaction_type="INCOME",
+                category="Doanh thu bán hàng (POS)",
+                amount=int(open_shift.qr_revenue),
+                branch_id=open_shift.branch_id,
+                payment_method="BANK_TRANSFER",
+                recipient_payer=open_shift.staff_name,
+                note=f"Doanh thu bán hàng chuyển khoản QR - {open_shift.shift_name} {shift_tag}",
+                created_by="Hệ thống (Kết ca)",
+                created_at=created_at
+            )
+            db.add(tx_qr)
+
+        # 3. Card Revenue Voucher (if > 0)
+        if open_shift.card_revenue > 0:
+            tx_card = Transaction(
+                code=_generate_shift_tx_code(db, "INCOME", used_codes),
+                transaction_type="INCOME",
+                category="Doanh thu bán hàng (POS)",
+                amount=int(open_shift.card_revenue),
+                branch_id=open_shift.branch_id,
+                payment_method="BANK_TRANSFER",
+                recipient_payer=open_shift.staff_name,
+                note=f"Doanh thu bán hàng thẻ POS - {open_shift.shift_name} {shift_tag}",
+                created_by="Hệ thống (Kết ca)",
+                created_at=created_at
+            )
+            db.add(tx_card)
+
+        # 4. Cash Difference Voucher (if difference != 0)
+        if open_shift.difference > 0:
+            tx_diff = Transaction(
+                code=_generate_shift_tx_code(db, "INCOME", used_codes),
+                transaction_type="INCOME",
+                category="Thu chênh lệch thừa két kết ca",
+                amount=int(open_shift.difference),
+                branch_id=open_shift.branch_id,
+                payment_method="CASH",
+                recipient_payer=open_shift.staff_name,
+                note=f"Tiền thừa két khi kết ca - {open_shift.shift_name} {shift_tag}",
+                created_by="Hệ thống (Kết ca)",
+                created_at=created_at
+            )
+            db.add(tx_diff)
+        elif open_shift.difference < 0:
+            tx_diff = Transaction(
+                code=_generate_shift_tx_code(db, "EXPENSE", used_codes),
+                transaction_type="EXPENSE",
+                category="Chi phí thất thoát / thiếu tiền két",
+                amount=int(abs(open_shift.difference)),
+                branch_id=open_shift.branch_id,
+                payment_method="CASH",
+                recipient_payer=open_shift.staff_name,
+                note=f"Tiền thiếu két khi kết ca - {open_shift.shift_name} {shift_tag}",
+                created_by="Hệ thống (Kết ca)",
+                created_at=created_at
+            )
+            db.add(tx_diff)
 
     db.commit()
     db.refresh(open_shift)
