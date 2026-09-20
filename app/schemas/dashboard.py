@@ -112,3 +112,4 @@ class DashboardStatsResponse(BaseModel):
     category_sales: List[CategoryStat]
     staff_performances: List[StaffPerformanceStat]
     low_stock_details: List[LowStockDetailItem]
+    low_stock_threshold: int = 5

@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 from app.dependencies import get_db, require_permission, get_current_user
 from app.models.user import User
 from app.models.setting import ShiftTemplate, SystemSetting
+from app.models.stock import StockItem
 from app.schemas.setting import (
     ShiftTemplateResponse,
     ShiftTemplateCreate,
@@ -72,6 +73,10 @@ def update_settings(
             setting.value = val_str
         else:
             db.add(SystemSetting(key=k, value=val_str))
+
+    if "low_stock_threshold" in req_dict and req_dict["low_stock_threshold"] is not None:
+        new_th = int(req_dict["low_stock_threshold"])
+        db.query(StockItem).update({StockItem.min_alert_stock: new_th})
 
     db.commit()
     return get_settings(db)

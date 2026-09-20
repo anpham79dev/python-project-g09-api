@@ -364,5 +364,6 @@ def get_dashboard_stats(
         payment_methods=payment_methods,
         category_sales=category_sales,
         staff_performances=staff_performances,
-        low_stock_details=low_stock_details
+        low_stock_details=low_stock_details,
+        low_stock_threshold=low_stock_threshold
     )

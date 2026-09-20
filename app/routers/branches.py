@@ -7,6 +7,7 @@ from app.models.user import User
 from app.models.product import Product
 from app.models.branch import Branch, Warehouse
 from app.models.stock import StockItem
+from app.models.setting import SystemSetting
 from app.schemas.branch import (
     BranchResponse,
     BranchCreate,
@@ -101,13 +102,20 @@ def get_warehouse_stocks(
 
     stocks = query.all()
 
+    threshold_setting = db.query(SystemSetting).filter(SystemSetting.key == "low_stock_threshold").first()
+    try:
+        sys_threshold = int(threshold_setting.value) if threshold_setting and int(threshold_setting.value) > 0 else 5
+    except (ValueError, TypeError):
+        sys_threshold = 5
+
     results = []
     for s in stocks:
         wh = db.query(Warehouse).filter(Warehouse.id == s.warehouse_id).first()
         prod = db.query(Product).filter(Product.id == s.product_id).first()
         branch = db.query(Branch).filter(Branch.id == wh.branch_id).first() if wh and wh.branch_id else None
         
-        calc_status = "in_stock" if s.quantity > s.min_alert_stock else "low_stock" if s.quantity > 0 else "out_of_stock"
+        eff_threshold = s.min_alert_stock if (s.min_alert_stock is not None and s.min_alert_stock > 0) else sys_threshold
+        calc_status = "in_stock" if s.quantity > eff_threshold else "low_stock" if s.quantity > 0 else "out_of_stock"
 
         results.append(StockItemResponse(
             id=s.id,
@@ -120,7 +128,7 @@ def get_warehouse_stocks(
             product_image=prod.image if prod else None,
             product_category=prod.category if prod else None,
             quantity=s.quantity,
-            min_alert_stock=s.min_alert_stock,
+            min_alert_stock=eff_threshold,
             status=calc_status,
             updated_at=s.updated_at
         ))
