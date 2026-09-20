@@ -81,14 +81,19 @@ def create_transaction(
     count = db.query(Transaction).count()
     code = generate_tx_code(req.transaction_type, count)
 
+    fallback_recipient = "Khách hàng" if req.transaction_type == "INCOME" else "Nhà cung cấp / Đối tác"
+    recipient = req.recipient_payer.strip() if (req.recipient_payer and req.recipient_payer.strip()) else fallback_recipient
+    category = req.category.strip() if (req.category and req.category.strip()) else ("Thu khác / Hoàn tiền" if req.transaction_type == "INCOME" else "Chi phí Khác")
+    branch_id = req.branch_id.strip() if (req.branch_id and req.branch_id.strip() and req.branch_id != "ALL") else None
+
     tx = Transaction(
         code=code,
         transaction_type=req.transaction_type,
-        category=req.category.strip(),
+        category=category,
         amount=req.amount,
-        branch_id=req.branch_id if req.branch_id and req.branch_id != "ALL" else None,
-        payment_method=req.payment_method,
-        recipient_payer=req.recipient_payer.strip(),
+        branch_id=branch_id,
+        payment_method=req.payment_method or "CASH",
+        recipient_payer=recipient,
         note=req.note.strip() if req.note else None,
         created_by=admin.full_name,
         created_at=get_now_utc()

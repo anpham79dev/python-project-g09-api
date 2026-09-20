@@ -1,6 +1,6 @@
 from datetime import datetime
-from typing import Optional, List, Dict
-from pydantic import BaseModel, ConfigDict, Field
+from typing import Optional, List, Dict, Any
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 from pydantic.alias_generators import to_camel
 
 
@@ -10,13 +10,44 @@ class TransactionBase(BaseModel):
         populate_by_name=True,
         from_attributes=True
     )
-    transaction_type: str  # 'INCOME' | 'EXPENSE'
-    category: str
+    transaction_type: str = "INCOME"  # 'INCOME' | 'EXPENSE'
+    category: str = "Thu khác / Hoàn tiền"
     amount: int = Field(gt=0)
     branch_id: Optional[str] = None
     payment_method: str = "CASH"  # 'CASH' | 'BANK_TRANSFER'
-    recipient_payer: str
+    recipient_payer: Optional[str] = "Khách hàng"
     note: Optional[str] = None
+
+    @field_validator("amount", mode="before")
+    @classmethod
+    def parse_amount(cls, v: Any) -> int:
+        if isinstance(v, str):
+            cleaned = (
+                v.replace("₫", "")
+                .replace("đ", "")
+                .replace("VNĐ", "")
+                .replace("VND", "")
+                .replace(",", "")
+                .strip()
+            )
+            if "." in cleaned and len(cleaned.split(".")[-1]) == 3:
+                cleaned = cleaned.replace(".", "")
+            try:
+                val = float(cleaned)
+                return int(round(val))
+            except (ValueError, TypeError):
+                raise ValueError("Số tiền không hợp lệ")
+        elif isinstance(v, (int, float)):
+            return int(round(v))
+        return v
+
+    @field_validator("recipient_payer", mode="before")
+    @classmethod
+    def sanitize_recipient(cls, v: Any) -> str:
+        if v is None:
+            return "Khách hàng"
+        s = str(v).strip()
+        return s if s else "Khách hàng"
 
 
 class TransactionCreate(TransactionBase):
