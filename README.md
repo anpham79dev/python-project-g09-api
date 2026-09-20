@@ -110,9 +110,9 @@ be/
 - Hỗ trợ lập Phiếu Thu / Phiếu Chi có chứng từ.
 - Phân hệ Đối soát Ngân hàng: Đối chiếu giao dịch chuyển khoản với sao kê thực tế.
 
-### 3.6. Cấu Hình Hệ Thống & CMS Landing Page
-- Cấu hình thông tin thương hiệu, thuế VAT, thời gian ca làm việc linh hoạt.
-- Quản lý nội dung công khai trên Landing Page (Hero banner, Bánh nổi bật, Câu chuyện thương hiệu, Lời chứng thực).
+### 3.6. Cấu Hình Hệ Thống & Ca Làm Việc Động
+- Cấu hình thông tin thương hiệu tiệm bánh, thuế VAT, tài khoản ngân hàng VietQR.
+- Tùy biến khung giờ ca làm việc động linh hoạt phục vụ phân ca bán hàng POS.
 
 ---
 
@@ -147,7 +147,7 @@ alembic upgrade head
 ```bash
 python seed.py
 ```
-> Dữ liệu seed bao gồm: 21 Quyền, 3 Vai trò hệ thống, 2 Chi nhánh, 5 Tài khoản nhân viên, 11 Món bánh, 7 Đơn hàng mẫu, 12 Giao dịch thu/chi, Ca làm việc, và Cấu hình Landing Page.
+> Dữ liệu seed bao gồm: 20 Quyền, 3 Vai trò hệ thống, 2 Chi nhánh, 5 Tài khoản nhân viên, 11 Món bánh, 7 Đơn hàng mẫu, 12 Giao dịch thu/chi và Ca làm việc.
 
 ### Bước 6: Khởi chạy Backend Dev Server
 ```bash
