@@ -9,6 +9,7 @@ from app.models.product import Product
 from app.models.stock import StockItem
 from app.models.branch import Warehouse
 from app.models.order import Order, OrderItem
+from app.models.setting import SystemSetting
 from app.models.shift import WorkShift
 from app.core.inventory import recalc_product_stock
 from app.core.timezone import get_now_utc, get_date_range_vn, VN_TZ
@@ -138,6 +139,10 @@ def create_order(
         ).first()
         target_warehouse_id = retail_wh.id if retail_wh else "wh-001"
 
+    # Check allow_negative_stock setting
+    neg_setting = db.query(SystemSetting).filter(SystemSetting.key == "allow_negative_stock").first()
+    allow_negative_stock = (neg_setting.value.lower() == "true") if neg_setting else False
+
     try:
         # 1. Lock and validate each StockItem in target warehouse
         order_items_to_create = []
@@ -160,7 +165,7 @@ def create_order(
             ).with_for_update().first()
 
             available_qty = stock_item.quantity if stock_item else 0
-            if available_qty < item.quantity:
+            if not allow_negative_stock and available_qty < item.quantity:
                 wh_obj = db.query(Warehouse).filter(Warehouse.id == target_warehouse_id).first()
                 wh_name = wh_obj.name if wh_obj else target_warehouse_id
                 raise HTTPException(
@@ -169,7 +174,16 @@ def create_order(
                 )
 
             # Deduct warehouse stock
-            stock_item.quantity -= item.quantity
+            if stock_item:
+                stock_item.quantity -= item.quantity
+            else:
+                stock_item = StockItem(
+                    warehouse_id=target_warehouse_id,
+                    product_id=item.product_id,
+                    quantity=-item.quantity,
+                    min_alert_stock=5
+                )
+                db.add(stock_item)
 
             # Synchronize product.stock
             recalc_product_stock(db, item.product_id)

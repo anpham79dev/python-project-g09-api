@@ -13,7 +13,7 @@ class ProductBase(BaseModel):
     name: str
     category: str
     price: int = Field(ge=0)
-    stock: int = Field(default=0, ge=0)
+    stock: int = Field(default=0)
     description: Optional[str] = None
     image: str
 
@@ -31,7 +31,7 @@ class ProductUpdate(BaseModel):
     name: Optional[str] = None
     category: Optional[str] = None
     price: Optional[int] = Field(default=None, ge=0)
-    stock: Optional[int] = Field(default=None, ge=0)
+    stock: Optional[int] = Field(default=None)
     description: Optional[str] = None
     image: Optional[str] = None
 
