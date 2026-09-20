@@ -7,6 +7,7 @@ from app.dependencies import get_db, require_permission
 from app.models.user import User
 from app.models.product import Product
 from app.models.order import Order, OrderItem
+from app.models.setting import SystemSetting
 from app.core.timezone import get_now_vn, get_period_range_vn, get_date_range_vn, VN_TZ
 from app.schemas.dashboard import (
     DashboardStatsResponse,
@@ -126,15 +127,21 @@ def get_dashboard_stats(
     all_products = db.query(Product).filter(Product.is_deleted == False).all()
     total_products_count = len(all_products)
 
+    threshold_setting = db.query(SystemSetting).filter(SystemSetting.key == "low_stock_threshold").first()
+    try:
+        low_stock_threshold = int(threshold_setting.value) if threshold_setting and int(threshold_setting.value) > 0 else 5
+    except (ValueError, TypeError):
+        low_stock_threshold = 5
+
     low_stock_details: List[LowStockDetailItem] = []
     for p in all_products:
-        if p.stock <= 5:
+        if p.stock <= low_stock_threshold:
             low_stock_details.append(LowStockDetailItem(
                 id=p.id,
                 name=p.name,
                 category=p.category,
                 stock=p.stock,
-                threshold=5,
+                threshold=low_stock_threshold,
                 status="Hết hàng" if p.stock == 0 else "Sắp hết",
                 image=p.image
             ))

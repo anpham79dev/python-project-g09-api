@@ -46,7 +46,7 @@ def get_settings(db: Session = Depends(get_db)):
         hotline=settings_dict["hotline"],
         address=settings_dict["address"],
         default_vat_rate=int(settings_dict["default_vat_rate"]),
-        low_stock_threshold=int(settings_dict["low_stock_threshold"]),
+        low_stock_threshold=int(settings_dict["low_stock_threshold"]) if int(settings_dict.get("low_stock_threshold", "5") or 0) > 0 else 5,
         allow_negative_stock=settings_dict["allow_negative_stock"] == "true",
         require_shift_reconciliation_note=settings_dict["require_shift_reconciliation_note"] == "true",
         bank_account_number=settings_dict["bank_account_number"],
