@@ -37,6 +37,10 @@ def seed_database():
         db.query(WorkShift).delete()
         db.query(Product).delete()
         db.query(User).delete()
+        db.query(Warehouse).delete()
+        db.query(Branch).delete()
+        db.query(ShiftTemplate).delete()
+        db.query(SystemSetting).delete()
         db.query(AuditLog).delete()
         db.execute(role_permissions.delete())
         db.query(Role).delete()
@@ -78,6 +82,35 @@ def seed_database():
         db.flush()
         print("✅ Đã tạo 3 vai trò hệ thống gốc (SUPER_ADMIN, ADMIN, STAFF).")
 
+        # 0.2. TẠO 2 CHI NHÁNH & 3 KHO HÀNG
+        b1 = Branch(
+            id="branch-001",
+            code="CN-Q1",
+            name="Artisan Bakery - Chi Nhánh Quận 1 (Trụ Sở)",
+            address="123 Đường Đồng Khởi, Bến Nghé, Quận 1, TP.HCM",
+            phone="0901 234 567",
+            manager_name="Nguyễn Quản Trị",
+            status="ACTIVE"
+        )
+        b2 = Branch(
+            id="branch-002",
+            code="CN-TD",
+            name="Artisan Bakery - Chi Nhánh Thảo Điền",
+            address="45 Đường Xuân Thủy, Thảo Điền, TP. Thủ Đức, TP.HCM",
+            phone="0909 888 777",
+            manager_name="Lê Thu Hà",
+            status="ACTIVE"
+        )
+        db.add_all([b1, b2])
+        db.flush()
+
+        w1 = Warehouse(id="wh-001", branch_id=b1.id, code="KHO-Q1-POS", name="Kho Quầy Bán Lẻ Q1", warehouse_type="RETAIL", status="ACTIVE")
+        w2 = Warehouse(id="wh-002", branch_id=b1.id, code="KHO-Q1-COLD", name="Kho Lạnh Bảo Quản Q1", warehouse_type="COLD_STORAGE", status="ACTIVE")
+        w3 = Warehouse(id="wh-003", branch_id=b2.id, code="KHO-TD-POS", name="Kho Quầy Bán Lẻ Thảo Điền", warehouse_type="RETAIL", status="ACTIVE")
+        db.add_all([w1, w2, w3])
+        db.flush()
+        print("✅ Đã tạo 2 chi nhánh và 3 kho lưu trữ (wh-001, wh-002, wh-003).")
+
         # 1. TẠO USERS
         superadmin_user = User(
             id="user-000",
@@ -101,6 +134,7 @@ def seed_database():
             phone="0901234567",
             role_id=role_objs["ADMIN"].id,
             role="ADMIN",
+            default_branch_id="branch-001",
             status="ACTIVE",
             created_at=datetime.now(timezone.utc) - timedelta(days=60)
         )
@@ -114,6 +148,7 @@ def seed_database():
             phone="0912345678",
             role_id=role_objs["STAFF"].id,
             role="STAFF",
+            default_branch_id="branch-001",
             status="ACTIVE",
             created_at=datetime.now(timezone.utc) - timedelta(days=30)
         )
@@ -127,6 +162,7 @@ def seed_database():
             phone="0988776655",
             role_id=role_objs["STAFF"].id,
             role="STAFF",
+            default_branch_id="branch-002",
             status="ACTIVE",
             created_at=datetime.now(timezone.utc) - timedelta(days=20)
         )
@@ -140,6 +176,7 @@ def seed_database():
             phone="0977665544",
             role_id=role_objs["STAFF"].id,
             role="STAFF",
+            default_branch_id="branch-001",
             status="INACTIVE",
             created_at=datetime.now(timezone.utc) - timedelta(days=10)
         )
@@ -264,6 +301,36 @@ def seed_database():
         db.add_all(products)
         db.commit()
         print("✅ Đã nạp 11 sản phẩm bánh mẫu với đầy đủ danh mục và các trạng thái tồn kho.")
+
+        # 2.1. TẠO TỒN KHO CHI TIẾT (stock_items) - SUM KHỚP ĐÚNG 100% TỒN KHO SẢN PHẨM
+        # wh-001: Kho Quầy Bán Lẻ Q1 | wh-002: Kho Lạnh Q1 | wh-003: Kho Quầy Thảo Điền
+        stock_distribution = {
+            "prod-001": [("wh-001", 25), ("wh-002", 10), ("wh-003", 10)],  # 45
+            "prod-002": [("wh-001", 8),  ("wh-002", 0),  ("wh-003", 6)],   # 14
+            "prod-003": [("wh-001", 15), ("wh-002", 5),  ("wh-003", 8)],   # 28
+            "prod-004": [("wh-001", 20), ("wh-002", 5),  ("wh-003", 10)],  # 35
+            "prod-005": [("wh-001", 3),  ("wh-002", 1),  ("wh-003", 2)],   # 6
+            "prod-006": [("wh-001", 10), ("wh-002", 3),  ("wh-003", 5)],   # 18
+            "prod-007": [("wh-001", 12), ("wh-002", 2),  ("wh-003", 8)],   # 22
+            "prod-008": [("wh-001", 50), ("wh-002", 20), ("wh-003", 29)],  # 99
+            "prod-009": [("wh-001", 40), ("wh-002", 20), ("wh-003", 20)],  # 80
+            "prod-010": [("wh-001", 2),  ("wh-002", 0),  ("wh-003", 1)],   # 3
+            "prod-011": [("wh-001", 0),  ("wh-002", 0),  ("wh-003", 0)],   # 0
+        }
+
+        stock_items = []
+        for p_id, wh_allocations in stock_distribution.items():
+            for wh_id, qty in wh_allocations:
+                stock_items.append(StockItem(
+                    id=f"stk-{wh_id}-{p_id}",
+                    warehouse_id=wh_id,
+                    product_id=p_id,
+                    quantity=qty,
+                    min_alert_stock=5
+                ))
+        db.add_all(stock_items)
+        db.commit()
+        print(f"✅ Đã nạp {len(stock_items)} bản ghi tồn kho chi nhánh (stock_items) cho 11 sản phẩm.")
 
         # 3. TẠO ĐƠN HÀNG LỊCH SỬ (Hôm nay & Hôm qua)
         now = datetime.now(timezone.utc)
@@ -455,6 +522,20 @@ def seed_database():
         db.add(landing_config)
         db.commit()
         print("✅ Đã khởi tạo cấu hình Landing Page CMS mẫu.")
+
+        # 4. TẠO CA MẪU (SHIFT TEMPLATES) & CẤU HÌNH HỆ THỐNG (SYSTEM SETTINGS)
+        templates = [
+            ShiftTemplate(name="Ca Sáng (Mở Cửa & Nướng Bánh)", start_time="06:00", end_time="14:00", default_initial_cash=2000000, is_active=True),
+            ShiftTemplate(name="Ca Chiều (Bán Hàng & Kết Ca)", start_time="14:00", end_time="22:00", default_initial_cash=1500000, is_active=True),
+            ShiftTemplate(name="Ca Gãy / Tăng Cường", start_time="10:00", end_time="16:00", default_initial_cash=1000000, is_active=True),
+        ]
+        db.add_all(templates)
+
+        from app.routers.settings import DEFAULT_SETTINGS
+        sys_settings = [SystemSetting(key=k, value=str(v)) for k, v in DEFAULT_SETTINGS.items()]
+        db.add_all(sys_settings)
+        db.commit()
+        print("✅ Đã nạp 3 ca làm việc mẫu và 12 tham số cấu hình hệ thống.")
 
         print("🎉 QUÁ TRÌNH SEED DỮ LIỆU HOÀN TẤT THÀNH CÔNG 100%!")
 

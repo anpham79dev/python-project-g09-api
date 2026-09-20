@@ -6,7 +6,10 @@ from sqlalchemy import or_, func
 from app.dependencies import get_db, get_current_user_optional
 from app.models.user import User
 from app.models.product import Product
+from app.models.stock import StockItem
+from app.models.branch import Warehouse
 from app.models.order import Order, OrderItem
+from app.core.inventory import recalc_product_stock
 from app.schemas.order import OrderCreate, OrderResponse
 
 router = APIRouter(prefix="/orders", tags=["Orders"])
@@ -111,15 +114,23 @@ def create_order(
     staff_id = current_user.id if current_user else (order_in.staff_id or "user-default")
     staff_name = current_user.full_name if current_user else (order_in.staff_name or "Thu Ngân")
 
+    target_branch_id = order_in.branch_id or "branch-001"
+    target_warehouse_id = order_in.warehouse_id
+    if not target_warehouse_id:
+        retail_wh = db.query(Warehouse).filter(
+            Warehouse.branch_id == target_branch_id,
+            Warehouse.warehouse_type == "RETAIL"
+        ).first()
+        target_warehouse_id = retail_wh.id if retail_wh else "wh-001"
+
     try:
-        # 1. Lock and validate each product
+        # 1. Lock and validate each StockItem in target warehouse
         order_items_to_create = []
         for item in order_in.items:
-            # Query product with row lock for update
             product = db.query(Product).filter(
                 Product.id == item.product_id,
                 Product.is_deleted == False
-            ).with_for_update().first()
+            ).first()
 
             if not product:
                 raise HTTPException(
@@ -127,14 +138,26 @@ def create_order(
                     detail=f"Sản phẩm '{item.product_name}' (ID: {item.product_id}) không tồn tại hoặc đã ngừng bán!"
                 )
 
-            if product.stock < item.quantity:
+            # Lock StockItem row for this warehouse and product
+            stock_item = db.query(StockItem).filter(
+                StockItem.warehouse_id == target_warehouse_id,
+                StockItem.product_id == item.product_id
+            ).with_for_update().first()
+
+            available_qty = stock_item.quantity if stock_item else 0
+            if available_qty < item.quantity:
+                wh_obj = db.query(Warehouse).filter(Warehouse.id == target_warehouse_id).first()
+                wh_name = wh_obj.name if wh_obj else target_warehouse_id
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=f"Sản phẩm '{product.name}' không đủ số lượng tồn kho (Chỉ còn {product.stock}, yêu cầu {item.quantity})!"
+                    detail=f"Sản phẩm '{product.name}' tại kho '{wh_name}' không đủ số lượng tồn kho (Chỉ còn {available_qty}, yêu cầu {item.quantity})!"
                 )
 
-            # Deduct stock
-            product.stock -= item.quantity
+            # Deduct warehouse stock
+            stock_item.quantity -= item.quantity
+
+            # Synchronize product.stock
+            recalc_product_stock(db, item.product_id)
 
             # Prepare order item
             order_item = OrderItem(
@@ -152,8 +175,8 @@ def create_order(
             code=order_code,
             customer_name=order_in.customer_name or "Khách vãng lai",
             customer_phone=order_in.customer_phone,
-            branch_id=order_in.branch_id or "branch-001",
-            warehouse_id=order_in.warehouse_id or "wh-001",
+            branch_id=target_branch_id,
+            warehouse_id=target_warehouse_id,
             staff_id=staff_id,
             staff_name=staff_name,
             subtotal=order_in.subtotal,

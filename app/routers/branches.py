@@ -31,39 +31,6 @@ def get_branches(
     if status:
         query = query.filter(Branch.status == status)
     branches = query.order_by(Branch.created_at.asc()).all()
-
-    # If no branches exist, seed default branches
-    if not branches:
-        b1 = Branch(
-            id="branch-001",
-            code="CN-Q1",
-            name="Artisan Bakery - Chi Nhánh Quận 1 (Trụ Sở)",
-            address="123 Đường Đồng Khởi, Bến Nghé, Quận 1, TP.HCM",
-            phone="0901 234 567",
-            manager_name="Nguyễn Quản Trị",
-            status="ACTIVE"
-        )
-        b2 = Branch(
-            id="branch-002",
-            code="CN-TD",
-            name="Artisan Bakery - Chi Nhánh Thảo Điền",
-            address="45 Đường Xuân Thủy, Thảo Điền, TP. Thủ Đức, TP.HCM",
-            phone="0909 888 777",
-            manager_name="Lê Thu Hà",
-            status="ACTIVE"
-        )
-        db.add_all([b1, b2])
-        db.flush()
-
-        # Seed Retail Warehouses
-        w1 = Warehouse(id="wh-001", branch_id=b1.id, code="KHO-Q1-POS", name="Kho Quầy Bán Lẻ Q1", warehouse_type="RETAIL")
-        w2 = Warehouse(id="wh-002", branch_id=b1.id, code="KHO-Q1-COLD", name="Kho Lạnh Bảo Quản Q1", warehouse_type="COLD_STORAGE")
-        w3 = Warehouse(id="wh-003", branch_id=b2.id, code="KHO-TD-POS", name="Kho Quầy Bán Lẻ Thảo Điền", warehouse_type="RETAIL")
-        db.add_all([w1, w2, w3])
-        db.commit()
-
-        branches = [b1, b2]
-
     return branches
 
 
@@ -104,35 +71,35 @@ def create_branch(
     return branch
 
 
+from app.core.inventory import recalc_product_stock
+
+
 @router.get("/stocks", response_model=List[StockItemResponse])
 def get_warehouse_stocks(
     branch_id: Optional[str] = Query(default=None),
+    branch_id_alias: Optional[str] = Query(default=None, alias="branchId"),
     warehouse_id: Optional[str] = Query(default=None),
+    warehouse_id_alias: Optional[str] = Query(default=None, alias="warehouseId"),
     product_id: Optional[str] = Query(default=None),
+    product_id_alias: Optional[str] = Query(default=None, alias="productId"),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
     """Get real-time stock levels per product across warehouses and branches."""
+    target_branch = branch_id or branch_id_alias
+    target_wh = warehouse_id or warehouse_id_alias
+    target_prod = product_id or product_id_alias
+
     query = db.query(StockItem).join(Warehouse, StockItem.warehouse_id == Warehouse.id).join(Product, StockItem.product_id == Product.id)
 
-    if warehouse_id:
-        query = query.filter(StockItem.warehouse_id == warehouse_id)
-    if branch_id and branch_id != "ALL":
-        query = query.filter(Warehouse.branch_id == branch_id)
-    if product_id:
-        query = query.filter(StockItem.product_id == product_id)
+    if target_wh:
+        query = query.filter(StockItem.warehouse_id == target_wh)
+    if target_branch and target_branch != "ALL":
+        query = query.filter(Warehouse.branch_id == target_branch)
+    if target_prod:
+        query = query.filter(StockItem.product_id == target_prod)
 
     stocks = query.all()
-    
-    # Auto seed stock item if empty
-    if not stocks and not branch_id and not warehouse_id:
-        wh1 = db.query(Warehouse).first()
-        prod1 = db.query(Product).first()
-        if wh1 and prod1:
-            stk = StockItem(warehouse_id=wh1.id, product_id=prod1.id, quantity=15, min_alert_stock=5)
-            db.add(stk)
-            db.commit()
-            stocks = [stk]
 
     results = []
     for s in stocks:
@@ -194,6 +161,7 @@ def update_warehouse_stock(
         if req.min_alert_stock is not None:
             stock.min_alert_stock = req.min_alert_stock
 
+    recalc_product_stock(db, req.product_id)
     db.commit()
     db.refresh(stock)
 

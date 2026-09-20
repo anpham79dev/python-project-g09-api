@@ -40,11 +40,12 @@ class RoleResponse(BaseModel):
     permissions_version: int = 1
     permissions: List[PermissionResponse] = Field(default_factory=list)
     user_count: int = 0
-    created_at: Optional[datetime] = None
-    updated_at: Optional[datetime] = None
+    created_at: Optional[datetime] = Field(default=None, serialization_alias="createdAt")
+    updated_at: Optional[datetime] = Field(default=None, serialization_alias="updatedAt")
 
     class Config:
         from_attributes = True
+        populate_by_name = True
 
 
 class AuditLogResponse(BaseModel):

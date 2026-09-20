@@ -40,12 +40,6 @@ def get_settings(db: Session = Depends(get_db)):
     for s in db_settings:
         settings_dict[s.key] = s.value
 
-    # If DB is empty, populate defaults
-    if not db_settings:
-        for k, v in DEFAULT_SETTINGS.items():
-            db.add(SystemSetting(key=k, value=v))
-        db.commit()
-
     return SystemSettingsResponse(
         store_name=settings_dict["store_name"],
         store_slogan=settings_dict["store_slogan"],
@@ -94,19 +88,6 @@ def get_shift_templates(
 ):
     """Get list of active shift templates."""
     templates = db.query(ShiftTemplate).filter(ShiftTemplate.is_active == True).all()
-
-    # Seed default shift templates if DB is empty
-    if not templates:
-        defaults = [
-            ShiftTemplate(name="Ca Sáng (Mở Cửa & Nướng Bánh)", start_time="06:00", end_time="14:00", default_initial_cash=2000000),
-            ShiftTemplate(name="Ca Chiều (Bán Hàng & Kết Ca)", start_time="14:00", end_time="22:00", default_initial_cash=1500000),
-            ShiftTemplate(name="Ca Gãy / Tăng Cường", start_time="10:00", end_time="16:00", default_initial_cash=1000000)
-        ]
-        for d in defaults:
-            db.add(d)
-        db.commit()
-        templates = defaults
-
     return templates
 
 
